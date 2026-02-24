@@ -1,7 +1,9 @@
 /* =========================================================
    DW / ETL FULL REFRESH (Improved) for your OLTP schema
+   UPDATED for NEW PRD_TYPE structure (has CAT_ID FK)
    - Uses STG (CTAS)
-   - Dims: SHOP, PRODUCT, CAMPAIGN (Surrogate keys)
+   - Lookup dims: CATEGORY, PRD_TYPE, PAY_STAT, SHP_STAT, PERIOD
+   - Core dims (SK): SHOP, PRODUCT, CAMPAIGN
    - Bridge: CMP_KEY x PRD_KEY (SK bridge)
    - Facts: ORDER header (NK), ORDER line (NK+SK)
    ========================================================= */
@@ -38,7 +40,7 @@ BEGIN
 END;
 /
 --------------------------------------------------------------------------------
--- 1) STAGING TABLES 
+-- 1) STAGING TABLES  
 --------------------------------------------------------------------------------
 CREATE TABLE STG_SHOP     AS SELECT * FROM SHOP     WHERE 1=0;
 CREATE TABLE STG_PRODUCT  AS SELECT * FROM PRODUCT  WHERE 1=0;
@@ -48,13 +50,15 @@ CREATE TABLE STG_CAMPAIGN AS SELECT * FROM CAMPAIGN WHERE 1=0;
 CREATE TABLE STG_CMP_PRD  AS SELECT * FROM CMP_PRD  WHERE 1=0;
 
 --------------------------------------------------------------------------------
--- 2) LOOKUP DIMS 
+-- 2) LOOKUP DIMS  (copy structure + add PKs explicitly)
 --------------------------------------------------------------------------------
 CREATE TABLE DW_DIM_CATEGORY AS SELECT * FROM CATEGORY WHERE 1=0;
 ALTER TABLE DW_DIM_CATEGORY ADD CONSTRAINT PK_DW_DIM_CATEGORY PRIMARY KEY (CAT_ID);
 
 CREATE TABLE DW_DIM_PRD_TYPE AS SELECT * FROM PRD_TYPE WHERE 1=0;
 ALTER TABLE DW_DIM_PRD_TYPE ADD CONSTRAINT PK_DW_DIM_PRD_TYPE PRIMARY KEY (PRD_TYPE_ID);
+-- NEW PRD_TYPE has CAT_ID, so index for joins
+CREATE INDEX IX_DW_DIM_PRD_TYPE_CAT ON DW_DIM_PRD_TYPE(CAT_ID);
 
 CREATE TABLE DW_DIM_PAY_STAT AS SELECT * FROM PAY_STAT WHERE 1=0;
 ALTER TABLE DW_DIM_PAY_STAT ADD CONSTRAINT PK_DW_DIM_PAY_STAT PRIMARY KEY (PAY_STAT_ID);
@@ -66,7 +70,7 @@ CREATE TABLE DW_DIM_PERIOD AS SELECT * FROM PERIOD WHERE 1=0;
 ALTER TABLE DW_DIM_PERIOD ADD CONSTRAINT PK_DW_DIM_PERIOD PRIMARY KEY (PERIOD_ID);
 
 --------------------------------------------------------------------------------
--- 3) CORE DIMS 
+-- 3) CORE DIMS  (Surrogate keys + cleaned attributes)
 --------------------------------------------------------------------------------
 CREATE TABLE DW_DIM_SHOP (
   SHOP_KEY    NUMBER PRIMARY KEY,
@@ -87,8 +91,11 @@ CREATE TABLE DW_DIM_PRODUCT (
   PRICE        NUMBER(10,2),
   STOCK        NUMBER,
   DISCOUNT     NUMBER(5,2),
+
+  -- IMPORTANT: CAT_ID should align with PRD_TYPE.CAT_ID now
   CAT_ID       NUMBER,
   PRD_TYPE_ID  NUMBER,
+
   SHOP_ID      NUMBER,
   CREATED_AT   TIMESTAMP,
   UPDATED_AT   TIMESTAMP,
@@ -114,7 +121,7 @@ CREATE SEQUENCE SEQ_DW_DIM_PRODUCT  START WITH 1 INCREMENT BY 1 NOCACHE;
 CREATE SEQUENCE SEQ_DW_DIM_CAMPAIGN START WITH 1 INCREMENT BY 1 NOCACHE;
 
 --------------------------------------------------------------------------------
--- 4) BRIDGE 
+-- 4) BRIDGE (SK-based)
 --------------------------------------------------------------------------------
 CREATE TABLE DW_BRIDGE_CAMPAIGN_PRODUCT (
   CMP_KEY NUMBER NOT NULL,
@@ -151,7 +158,7 @@ CREATE TABLE DW_FACT_ORDER_LINE (
   CONSTRAINT PK_DW_FACT_ORDER_LINE PRIMARY KEY (ORD_ID, SEQ)
 );
 
--- indexes for joins
+-- Indexes for joins
 CREATE INDEX IX_DW_DIM_PRODUCT_SHOP ON DW_DIM_PRODUCT(SHOP_ID);
 CREATE INDEX IX_DW_FOL_PRDKEY       ON DW_FACT_ORDER_LINE(PRD_KEY);
 CREATE INDEX IX_DW_FOL_SHOPKEY      ON DW_FACT_ORDER_LINE(SHOP_KEY);
@@ -220,22 +227,26 @@ BEGIN
     INSERT (SHOP_KEY, SHOP_ID, SHOP_NAME, RATING_AVG, USR_ID, CREATED_AT, UPDATED_AT)
     VALUES (SEQ_DW_DIM_SHOP.NEXTVAL, s.SHOP_ID, s.SHOP_NAME, s.RATING_AVG, s.USR_ID, s.CREATED_AT, s.UPDATED_AT);
 
-  /* ---------- CORE DIM: PRODUCT  ---------- */
+  /* ---------- CORE DIM: PRODUCT ---------- */
   MERGE INTO DW_DIM_PRODUCT d
   USING (
     SELECT
-      PRD_ID,
-      TRIM(NAME) AS PRD_NAME,
-      NULLIF(TRIM(DESCRIPTION), '') AS DESCRIPTION,
-      PRICE,
-      STOCK,
-      DISCOUNT,
-      CAT_ID,
-      PRD_TYPE_ID,
-      SHOP_ID,
-      CREATED_AT,
-      UPDATED_AT
-    FROM STG_PRODUCT
+      p.PRD_ID,
+      TRIM(p.NAME) AS PRD_NAME,
+      NULLIF(TRIM(p.DESCRIPTION), '') AS DESCRIPTION,
+      p.PRICE,
+      p.STOCK,
+      p.DISCOUNT,
+
+      pt.CAT_ID          AS CAT_ID,       -- ✅ from PRD_TYPE
+      p.PRD_TYPE_ID,
+
+      p.SHOP_ID,
+      p.CREATED_AT,
+      p.UPDATED_AT
+    FROM STG_PRODUCT p
+    JOIN DW_DIM_PRD_TYPE pt
+      ON pt.PRD_TYPE_ID = p.PRD_TYPE_ID
   ) s
   ON (d.PRD_ID = s.PRD_ID)
   WHEN MATCHED THEN
@@ -282,7 +293,7 @@ BEGIN
     INSERT (CMP_KEY, CMP_ID, CMP_NAME, DISCOUNT, START_DATE, END_DATE, PERIOD_ID, CREATED_AT, UPDATED_AT)
     VALUES (SEQ_DW_DIM_CAMPAIGN.NEXTVAL, s.CMP_ID, s.CMP_NAME, s.DISCOUNT, s.START_DATE, s.END_DATE, s.PERIOD_ID, s.CREATED_AT, s.UPDATED_AT);
 
-  /* ---------- BRIDGE  ---------- */
+  /* ---------- BRIDGE (NK -> SK) ---------- */
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_BRIDGE_CAMPAIGN_PRODUCT';
   INSERT INTO DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_KEY, PRD_KEY)
   SELECT DISTINCT
@@ -304,7 +315,7 @@ BEGIN
     ROUND(NVL(TOTAL_DISCOUNT,0),2)
   FROM STG_ORDERS;
 
-  /* ---------- FACT: ORDER LINE  ---------- */
+  /* ---------- FACT: ORDER LINE (NK -> SK) ---------- */
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_FACT_ORDER_LINE';
   INSERT INTO DW_FACT_ORDER_LINE (
     ORD_ID, SEQ, ORDER_DATE, USR_ID,
