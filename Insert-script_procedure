@@ -12,6 +12,23 @@ ORDER BY c.CMP_ID;
 
 ================
 SELECT
+    o.ORD_ID            AS "Receipt No",
+    o.ORDER_DATE        AS "Order Date",
+    u.NAME              AS "Customer",
+    s.SHOP_NAME         AS "Shop",
+    p.NAME              AS "Product",
+    od.QTY              AS "Qty",
+    od.UNIT_PRICE       AS "Unit Price",
+    (od.QTY * od.UNIT_PRICE) AS "Total"
+FROM ORDERS o
+JOIN APP_USER u ON o.USR_ID = u.USR_ID
+JOIN ORD_DTL od ON o.ORD_ID = od.ORD_ID
+JOIN PRODUCT p ON od.PRD_ID = p.PRD_ID
+JOIN SHOP s ON p.SHOP_ID = s.SHOP_ID
+ORDER BY o.ORD_ID;
+\
+================
+SELECT
     o.ORDER_ID        AS "Receipt No",
     o.ORDER_DATE      AS "Order Date",
     u.NAME            AS "Customer",
