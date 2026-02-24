@@ -1,0 +1,230 @@
+=== delete ===
+DELETE FROM USR_TYPE WHERE USR_TYPE_ID >= 4;
+DELETE FROM APP_USER WHERE USR_ID >= 4;
+DELETE FROM PRODUCT WHERE PRD_ID >= 3;
+DELETE FROM ORDERS WHERE ORD_ID >= 3;
+DELETE FROM CAMPAIGN WHERE CMP_ID >= 3;
+=== app usr ====
+BEGIN
+  FOR i IN 4..100 LOOP
+    INSERT INTO APP_USER
+    (USR_ID, USERNAME, PASSWORD, NAME, EMAIL, ADDRESS1, ADDRESS2, TEL1, TEL2, USR_TYPE_ID)
+    VALUES
+    (i,
+     'user' || i,
+     'pass123',
+     'User_' || i,
+     'user' || i || '@mail.com',
+     'Bangkok',
+     NULL,
+     '08' || LPAD(i,8,'0'),
+     NULL,
+     MOD(i,3)+1);
+  END LOOP;
+END;
+/
+=== product ===
+DECLARE
+  TYPE name_array IS VARRAY(10) OF VARCHAR2(50);
+
+  fruits name_array := name_array(
+    'Mango','Durian','Banana','Papaya','Guava',
+    'Pineapple','Longan','Rambutan','Coconut','Watermelon'
+  );
+
+  vegetables name_array := name_array(
+    'Cabbage','Carrot','Broccoli','Chili',
+    'Tomato','Cucumber','Pumpkin','Morning Glory',
+    'Eggplant','Onion'
+  );
+
+  processed name_array := name_array(
+    'Dried Mango','Banana Chips','Chili Paste',
+    'Pickled Cabbage','Tomato Sauce',
+    'Coconut Milk','Pumpkin Chips',
+    'Fried Shallot','Garlic Paste','Fruit Jam'
+  );
+
+  v_category NUMBER;
+  v_name VARCHAR2(50);
+
+BEGIN
+  FOR i IN 3..100 LOOP
+
+    -- สุ่มหมวด 1=Fruit 2=Vegetable 3=Processed
+    v_category := TRUNC(DBMS_RANDOM.VALUE(1,4));
+
+    IF v_category = 1 THEN
+       v_name := fruits(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+    ELSIF v_category = 2 THEN
+       v_name := vegetables(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+    ELSE
+       v_name := processed(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+    END IF;
+
+    INSERT INTO PRODUCT
+    (PRD_ID, NAME, DESCRIPTION, PRICE, STOCK, DISCOUNT, CAT_ID, PRD_TYPE_ID, SHOP_ID)
+    VALUES
+    (i,
+     CASE 
+       WHEN v_category = 1 THEN 'Fruit'
+       WHEN v_category = 2 THEN 'Vegetable'
+       ELSE 'Processed Product'
+     END,
+     v_name,
+     TRUNC(DBMS_RANDOM.VALUE(20,200)),
+     TRUNC(DBMS_RANDOM.VALUE(10,500)),
+     TRUNC(DBMS_RANDOM.VALUE(0,20)),
+     CASE WHEN v_category IN (1,2) THEN v_category ELSE 2 END,
+     1,
+     1);
+
+  END LOOP;
+END;
+/
+=== orders ===
+DECLARE
+  v_total NUMBER;
+  v_discount NUMBER;
+  v_pay_stat NUMBER;
+  v_user NUMBER;
+BEGIN
+  FOR i IN 3..100 LOOP
+
+    -- สุ่มผู้ใช้ (เฉพาะ customer)
+    v_user := TRUNC(DBMS_RANDOM.VALUE(2,20));
+
+    -- สุ่มยอดสินค้า
+    v_total := TRUNC(DBMS_RANDOM.VALUE(200,5000));
+
+    -- ส่วนลดไม่เกิน 20%
+    v_discount := TRUNC(v_total * DBMS_RANDOM.VALUE(0,0.2));
+
+    -- สถานะจ่ายเงิน
+    -- 70% Paid
+    -- 20% Pending
+    -- 10% Cancelled
+    IF DBMS_RANDOM.VALUE < 0.7 THEN
+       v_pay_stat := 2;
+    ELSIF DBMS_RANDOM.VALUE < 0.9 THEN
+       v_pay_stat := 1;
+    ELSE
+       v_pay_stat := 3;
+    END IF;
+
+    INSERT INTO ORDERS
+    (ORD_ID, ORDER_DATE, TOTAL_AMOUNT, TOTAL_DISCOUNT, USR_ID, PAY_STAT_ID)
+    VALUES
+    (i,
+     SYSDATE - TRUNC(DBMS_RANDOM.VALUE(0,60)),
+     v_total,
+     v_discount,
+     v_user,
+     v_pay_stat);
+
+  END LOOP;
+END;
+/
+=== ord_dtl ===
+DECLARE
+  v_price PRODUCT.PRICE%TYPE;
+  v_qty NUMBER;
+  v_discount NUMBER;
+  v_pay_status NUMBER;
+  v_ship_status NUMBER;
+BEGIN
+  FOR i IN 3..102 LOOP
+
+    -- สุ่มสินค้า 1-100 (ต้องมีใน PRODUCT ก่อน)
+    SELECT PRICE
+    INTO v_price
+    FROM PRODUCT
+    WHERE PRD_ID = TRUNC(DBMS_RANDOM.VALUE(1,100));
+
+    -- สุ่มจำนวน
+    v_qty := TRUNC(DBMS_RANDOM.VALUE(1,5));
+
+    -- ส่วนลดไม่เกิน 10%
+    v_discount := TRUNC(v_price * DBMS_RANDOM.VALUE(0,0.1));
+
+    -- เช็คสถานะจ่ายเงินของ order นั้น
+    SELECT PAY_STAT_ID
+    INTO v_pay_status
+    FROM ORDERS
+    WHERE ORD_ID = i;
+
+    -- กำหนดสถานะจัดส่งให้สัมพันธ์กับการจ่ายเงิน
+    IF v_pay_status = 3 THEN
+       -- Cancelled
+       v_ship_status := 1; -- Preparing
+    ELSIF v_pay_status = 2 THEN
+       -- Paid
+       v_ship_status := TRUNC(DBMS_RANDOM.VALUE(2,4)); -- Shipping หรือ Delivered
+    ELSE
+       -- Pending
+       v_ship_status := 1;
+    END IF;
+
+    INSERT INTO ORD_DTL
+    (ORD_ID, QTY, UNIT_PRICE, DISCOUNT, COMMENT_TEXT, RATING, PRD_ID, SHP_STAT_ID)
+    VALUES
+    (i,
+     v_qty,
+     v_price,
+     v_discount,
+     CASE WHEN v_ship_status = 3 THEN 'Good quality' ELSE NULL END,
+     CASE WHEN v_ship_status = 3 THEN TRUNC(DBMS_RANDOM.VALUE(3,6)) ELSE NULL END,
+     TRUNC(DBMS_RANDOM.VALUE(1,100)),
+     v_ship_status);
+
+  END LOOP;
+END;
+/
+=== campaign ====
+DECLARE
+  TYPE campaign_array IS VARRAY(20) OF VARCHAR2(100);
+
+  v_campaigns campaign_array := campaign_array(
+    'Summer Fruit Festival',
+    'Fresh Farm Promotion',
+    'Organic Harvest Week',
+    'Tropical Fruit Fair',
+    'Healthy Veggie Sale',
+    'Thai Mango Special',
+    'Durian Lover Festival',
+    'Weekend Farm Market',
+    'Green Season Promotion',
+    'Premium Produce Sale',
+    'Flash Sale Friday',
+    'Farmer Direct Deal',
+    'Super Saver Harvest',
+    'Rainy Season Discount',
+    'Golden Banana Week',
+    'Seasonal Fresh Picks',
+    'Farm to Table Campaign',
+    'Mid-Year Fresh Sale',
+    'Vegetable Bonanza',
+    'Agro Product Expo'
+  );
+
+  v_name VARCHAR2(100);
+
+BEGIN
+  FOR i IN 3..10 LOOP
+
+    -- สุ่มชื่อแคมเปญ
+    v_name := v_campaigns(TRUNC(DBMS_RANDOM.VALUE(1,21)));
+
+    INSERT INTO CAMPAIGN
+    (CMP_ID, NAME, DISCOUNT, START_DATE, END_DATE, PERIOD_ID)
+    VALUES
+    (i,
+     v_name,
+     TRUNC(DBMS_RANDOM.VALUE(5,30)),
+     SYSDATE - TRUNC(DBMS_RANDOM.VALUE(0,30)),
+     SYSDATE + TRUNC(DBMS_RANDOM.VALUE(7,30)),
+     1);
+
+  END LOOP;
+END;
+/
