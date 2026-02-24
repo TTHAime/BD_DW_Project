@@ -392,3 +392,43 @@ BEGIN
   END LOOP;
 END;
 /
+=== cmp prd ===
+DECLARE
+  v_prd_id NUMBER;
+  v_item_count NUMBER;
+  v_exist NUMBER;
+BEGIN
+
+  FOR c IN (SELECT CMP_ID FROM CAMPAIGN WHERE CMP_ID BETWEEN 3 AND 10)
+  LOOP
+
+    v_item_count := TRUNC(DBMS_RANDOM.VALUE(5,16));
+
+    FOR i IN 1..v_item_count LOOP
+
+      LOOP
+        v_prd_id := TRUNC(DBMS_RANDOM.VALUE(1,100));
+
+        SELECT COUNT(*)
+        INTO v_exist
+        FROM CMP_PRD
+        WHERE CMP_ID = c.CMP_ID
+        AND PRD_ID = v_prd_id;
+
+        EXIT WHEN v_exist = 0;
+      END LOOP;
+
+      INSERT INTO CMP_PRD
+      (CMP_ID, PRD_ID, CREATED_AT, UPDATED_AT)
+      VALUES
+      (c.CMP_ID,
+       v_prd_id,
+       SYSTIMESTAMP,
+       SYSTIMESTAMP);
+
+    END LOOP;
+
+  END LOOP;
+
+END;
+/
