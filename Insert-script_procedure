@@ -82,6 +82,70 @@ BEGIN
   END LOOP;
 END;
 /
+=== shop ===
+DECLARE
+  v_shop_id NUMBER;
+  v_counter NUMBER := 0;
+
+  TYPE shop_array IS VARRAY(20) OF VARCHAR2(100);
+  v_names shop_array := shop_array(
+    'Fresh Farm Market',
+    'Golden Mango Orchard',
+    'Organic Harvest Hub',
+    'Green Valley Produce',
+    'Tropical Fruit Garden',
+    'Thai Agro Fresh',
+    'Sunrise Vegetable Farm',
+    'Premium Durian House',
+    'Healthy Crop Market',
+    'Farm Direct Thailand',
+    'Sweet Banana Orchard',
+    'เชียงใหม่ผักสด',
+    'สวนผลไม้ลุงสมชาย',
+    'ตลาดเกษตรอินทรีย์',
+    'ฟาร์มผักปลอดสาร',
+    'ราชาผลไม้ไทย',
+    'สวนมะม่วงทอง',
+    'ฟาร์มผักไฮโดร',
+    'ตลาดผลไม้สดใหม่',
+    'สวนเกษตรรุ่งเรือง'
+  );
+
+BEGIN
+  -- หา SHOP_ID เริ่มต้น
+  SELECT NVL(MAX(SHOP_ID),0) + 1
+  INTO v_shop_id
+  FROM SHOP;
+
+  FOR rec IN (
+      SELECT u.USR_ID
+      FROM APP_USER u
+      WHERE u.USR_TYPE_ID = 3
+      AND NOT EXISTS (
+          SELECT 1 FROM SHOP s WHERE s.USR_ID = u.USR_ID
+      )
+      AND ROWNUM <= 20
+  )
+  LOOP
+
+    INSERT INTO SHOP (SHOP_ID, SHOP_NAME, RATING_AVG, USR_ID)
+    VALUES (
+        v_shop_id,
+        v_names(v_counter + 1),
+        CASE 
+            WHEN DBMS_RANDOM.VALUE(0,1) < 0.3 
+            THEN ROUND(DBMS_RANDOM.VALUE(3.8,4.3),2)
+            ELSE ROUND(DBMS_RANDOM.VALUE(4.3,4.9),2)
+        END,
+        rec.USR_ID
+    );
+
+    v_shop_id := v_shop_id + 1;
+    v_counter := v_counter + 1;
+
+  END LOOP;
+END;
+/
 === orders ===
 DECLARE
   v_total NUMBER;
