@@ -280,50 +280,55 @@ DECLARE
   v_discount NUMBER;
   v_pay_status NUMBER;
   v_ship_status NUMBER;
+  v_prd_id NUMBER;
+  v_item_count NUMBER;
 BEGIN
-  FOR i IN 3..102 LOOP
+  -- loop ทุก order
+  FOR o IN (SELECT ORD_ID, PAY_STAT_ID FROM ORDERS WHERE ORD_ID BETWEEN 3 AND 100)
+  LOOP
 
-    -- สุ่มสินค้า 1-100 (ต้องมีใน PRODUCT ก่อน)
-    SELECT PRICE
-    INTO v_price
-    FROM PRODUCT
-    WHERE PRD_ID = TRUNC(DBMS_RANDOM.VALUE(1,100));
+    -- สุ่มจำนวนสินค้าที่อยู่ใน order นี้ (1-5 รายการ)
+    v_item_count := TRUNC(DBMS_RANDOM.VALUE(1,6));
 
-    -- สุ่มจำนวน
-    v_qty := TRUNC(DBMS_RANDOM.VALUE(1,5));
+    FOR j IN 1..v_item_count LOOP
 
-    -- ส่วนลดไม่เกิน 10%
-    v_discount := TRUNC(v_price * DBMS_RANDOM.VALUE(0,0.1));
+      -- สุ่มสินค้า
+      v_prd_id := TRUNC(DBMS_RANDOM.VALUE(1,100));
 
-    -- เช็คสถานะจ่ายเงินของ order นั้น
-    SELECT PAY_STAT_ID
-    INTO v_pay_status
-    FROM ORDERS
-    WHERE ORD_ID = i;
+      -- ดึงราคาจาก product จริง
+      SELECT PRICE INTO v_price
+      FROM PRODUCT
+      WHERE PRD_ID = v_prd_id;
 
-    -- กำหนดสถานะจัดส่งให้สัมพันธ์กับการจ่ายเงิน
-    IF v_pay_status = 3 THEN
-       -- Cancelled
-       v_ship_status := 1; -- Preparing
-    ELSIF v_pay_status = 2 THEN
-       -- Paid
-       v_ship_status := TRUNC(DBMS_RANDOM.VALUE(2,4)); -- Shipping หรือ Delivered
-    ELSE
-       -- Pending
-       v_ship_status := 1;
-    END IF;
+      -- สุ่มจำนวน
+      v_qty := TRUNC(DBMS_RANDOM.VALUE(1,5));
 
-    INSERT INTO ORD_DTL
-    (ORD_ID, QTY, UNIT_PRICE, DISCOUNT, COMMENT_TEXT, RATING, PRD_ID, SHP_STAT_ID)
-    VALUES
-    (i,
-     v_qty,
-     v_price,
-     v_discount,
-     CASE WHEN v_ship_status = 3 THEN 'Good quality' ELSE NULL END,
-     CASE WHEN v_ship_status = 3 THEN TRUNC(DBMS_RANDOM.VALUE(3,6)) ELSE NULL END,
-     TRUNC(DBMS_RANDOM.VALUE(1,100)),
-     v_ship_status);
+      -- ส่วนลดไม่เกิน 10%
+      v_discount := TRUNC(v_price * DBMS_RANDOM.VALUE(0,0.1));
+
+      -- เช็คสถานะจ่ายเงิน
+      IF o.PAY_STAT_ID = 3 THEN
+         v_ship_status := 1; -- Cancel
+      ELSIF o.PAY_STAT_ID = 2 THEN
+         v_ship_status := TRUNC(DBMS_RANDOM.VALUE(2,4));
+      ELSE
+         v_ship_status := 1;
+      END IF;
+
+      INSERT INTO ORD_DTL
+      (ORD_ID, QTY, UNIT_PRICE, DISCOUNT,
+       COMMENT_TEXT, RATING, PRD_ID, SHP_STAT_ID)
+      VALUES
+      (o.ORD_ID,
+       v_qty,
+       v_price,
+       v_discount,
+       CASE WHEN v_ship_status = 3 THEN 'Good quality' ELSE NULL END,
+       CASE WHEN v_ship_status = 3 THEN TRUNC(DBMS_RANDOM.VALUE(3,6)) ELSE NULL END,
+       v_prd_id,
+       v_ship_status);
+
+    END LOOP;
 
   END LOOP;
 END;
