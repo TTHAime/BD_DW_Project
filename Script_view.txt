@@ -1,0 +1,57 @@
+--------------------------------------------------------------------------------
+-- Order Line Flat
+--------------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW VW_DASH_ORDER_LINE AS
+SELECT
+  l.ORD_ID,
+  l.SEQ,
+  l.ORDER_DATE,
+  l.USR_ID,
+  l.SHP_STAT_ID,
+  l.QTY,
+  l.UNIT_PRICE,
+  l.DISCOUNT              AS LINE_DISCOUNT,
+  l.LINE_AMOUNT           AS NET_LINE_AMOUNT,
+
+  o.PAY_STAT_ID,
+  o.TOTAL_AMOUNT          AS GROSS_ORDER_AMOUNT,
+  o.TOTAL_DISCOUNT        AS ORDER_DISCOUNT,
+
+  s.SHOP_ID,
+  s.SHOP_NAME,
+
+  p.PRD_ID,
+  p.PRD_NAME,
+  p.CAT_ID,
+  p.PRD_TYPE_ID,
+  p.PRICE                 AS LIST_PRICE,
+  p.DISCOUNT              AS PRD_DISCOUNT
+
+FROM DW_FACT_ORDER_LINE l
+JOIN DW_FACT_ORDER o
+  ON o.ORD_ID = l.ORD_ID
+LEFT JOIN DW_DIM_SHOP s
+  ON s.SHOP_KEY = l.SHOP_KEY
+LEFT JOIN DW_DIM_PRODUCT p
+  ON p.PRD_KEY = l.PRD_KEY;
+--------------------------------------------------------------------------------
+-- Campaign ↔ Product
+--------------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW VW_DASH_CAMPAIGN_PRODUCT AS
+SELECT
+  c.CMP_ID,
+  c.CMP_NAME,
+  c.DISCOUNT AS CMP_DISCOUNT,
+  c.START_DATE,
+  c.END_DATE,
+  c.PERIOD_ID,
+  b.PRD_KEY,
+  p.PRD_ID,
+  p.PRD_NAME,
+  p.CAT_ID,
+  p.PRD_TYPE_ID
+FROM DW_BRIDGE_CAMPAIGN_PRODUCT b
+JOIN DW_DIM_CAMPAIGN c ON c.CMP_KEY = b.CMP_KEY
+JOIN DW_DIM_PRODUCT  p ON p.PRD_KEY = b.PRD_KEY;
