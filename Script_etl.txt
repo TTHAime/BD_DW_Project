@@ -1,6 +1,14 @@
-/* =========================
-   0) DROP OLD OBJECTS
-   ========================= */
+/* =========================================================
+   DW / ETL FULL REFRESH (Improved) for your OLTP schema
+   - Uses STG (CTAS)
+   - Dims: SHOP, PRODUCT, CAMPAIGN (Surrogate keys)
+   - Bridge: CMP_KEY x PRD_KEY (SK bridge)
+   - Facts: ORDER header (NK), ORDER line (NK+SK)
+   ========================================================= */
+
+--------------------------------------------------------------------------------
+-- 0) DROP OLD OBJECTS
+--------------------------------------------------------------------------------
 BEGIN
   FOR x IN (
     SELECT object_name, object_type
@@ -9,7 +17,7 @@ BEGIN
       'DW_FACT_ORDER_LINE','DW_FACT_ORDER',
       'DW_BRIDGE_CAMPAIGN_PRODUCT',
       'DW_DIM_CAMPAIGN','DW_DIM_PRODUCT','DW_DIM_SHOP',
-      'DW_DIM_SHP_STAT','DW_DIM_PAY_STAT','DW_DIM_PRD_TYPE','DW_DIM_CATEGORY',
+      'DW_DIM_SHP_STAT','DW_DIM_PAY_STAT','DW_DIM_PRD_TYPE','DW_DIM_CATEGORY','DW_DIM_PERIOD',
       'STG_CMP_PRD','STG_CAMPAIGN','STG_ORD_DTL','STG_ORDERS','STG_PRODUCT','STG_SHOP',
       'SEQ_DW_DIM_SHOP','SEQ_DW_DIM_PRODUCT','SEQ_DW_DIM_CAMPAIGN',
       'PR_ETL_FULL_REFRESH'
@@ -24,15 +32,14 @@ BEGIN
         EXECUTE IMMEDIATE 'DROP PROCEDURE '||x.object_name;
       END IF;
     EXCEPTION
-      WHEN OTHERS THEN
-        NULL;
+      WHEN OTHERS THEN NULL;
     END;
   END LOOP;
 END;
-
--- =========================
--- 1) STAGING TABLES
--- =========================
+/
+--------------------------------------------------------------------------------
+-- 1) STAGING TABLES 
+--------------------------------------------------------------------------------
 CREATE TABLE STG_SHOP     AS SELECT * FROM SHOP     WHERE 1=0;
 CREATE TABLE STG_PRODUCT  AS SELECT * FROM PRODUCT  WHERE 1=0;
 CREATE TABLE STG_ORDERS   AS SELECT * FROM ORDERS   WHERE 1=0;
@@ -40,81 +47,91 @@ CREATE TABLE STG_ORD_DTL  AS SELECT * FROM ORD_DTL  WHERE 1=0;
 CREATE TABLE STG_CAMPAIGN AS SELECT * FROM CAMPAIGN WHERE 1=0;
 CREATE TABLE STG_CMP_PRD  AS SELECT * FROM CMP_PRD  WHERE 1=0;
 
--- =========================
--- 2) LOOKUP DIMS (copy structure)
--- =========================
+--------------------------------------------------------------------------------
+-- 2) LOOKUP DIMS 
+--------------------------------------------------------------------------------
 CREATE TABLE DW_DIM_CATEGORY AS SELECT * FROM CATEGORY WHERE 1=0;
-CREATE TABLE DW_DIM_PRD_TYPE AS SELECT * FROM PRD_TYPE WHERE 1=0;
-CREATE TABLE DW_DIM_PAY_STAT AS SELECT * FROM PAY_STAT WHERE 1=0;
-CREATE TABLE DW_DIM_SHP_STAT AS SELECT * FROM SHP_STAT WHERE 1=0;
+ALTER TABLE DW_DIM_CATEGORY ADD CONSTRAINT PK_DW_DIM_CATEGORY PRIMARY KEY (CAT_ID);
 
--- =========================
--- 3) CORE DIMS (SURROGATE KEY + CLEAN)
--- =========================
+CREATE TABLE DW_DIM_PRD_TYPE AS SELECT * FROM PRD_TYPE WHERE 1=0;
+ALTER TABLE DW_DIM_PRD_TYPE ADD CONSTRAINT PK_DW_DIM_PRD_TYPE PRIMARY KEY (PRD_TYPE_ID);
+
+CREATE TABLE DW_DIM_PAY_STAT AS SELECT * FROM PAY_STAT WHERE 1=0;
+ALTER TABLE DW_DIM_PAY_STAT ADD CONSTRAINT PK_DW_DIM_PAY_STAT PRIMARY KEY (PAY_STAT_ID);
+
+CREATE TABLE DW_DIM_SHP_STAT AS SELECT * FROM SHP_STAT WHERE 1=0;
+ALTER TABLE DW_DIM_SHP_STAT ADD CONSTRAINT PK_DW_DIM_SHP_STAT PRIMARY KEY (SHP_STAT_ID);
+
+CREATE TABLE DW_DIM_PERIOD AS SELECT * FROM PERIOD WHERE 1=0;
+ALTER TABLE DW_DIM_PERIOD ADD CONSTRAINT PK_DW_DIM_PERIOD PRIMARY KEY (PERIOD_ID);
+
+--------------------------------------------------------------------------------
+-- 3) CORE DIMS 
+--------------------------------------------------------------------------------
 CREATE TABLE DW_DIM_SHOP (
   SHOP_KEY    NUMBER PRIMARY KEY,
   SHOP_ID     NUMBER NOT NULL,
-  SHOP_NAME   VARCHAR2(200),
-  RATING_AVG  NUMBER(5,2),
-  USR_ID      NUMBER,
-  CREATED_AT  DATE,
-  UPDATED_AT  DATE,
+  SHOP_NAME   VARCHAR2(100) NOT NULL,
+  RATING_AVG  NUMBER(3,2),
+  USR_ID      NUMBER NOT NULL,
+  CREATED_AT  TIMESTAMP,
+  UPDATED_AT  TIMESTAMP,
   CONSTRAINT UQ_DW_DIM_SHOP_NK UNIQUE (SHOP_ID)
 );
 
 CREATE TABLE DW_DIM_PRODUCT (
   PRD_KEY      NUMBER PRIMARY KEY,
   PRD_ID       NUMBER NOT NULL,
-  PRD_NAME     VARCHAR2(200),
-  DESCRIPTION  VARCHAR2(1000),
-  PRICE        NUMBER(12,2),
+  PRD_NAME     VARCHAR2(100) NOT NULL,
+  DESCRIPTION  VARCHAR2(255),
+  PRICE        NUMBER(10,2),
   STOCK        NUMBER,
-  DISCOUNT     NUMBER(12,2),
+  DISCOUNT     NUMBER(5,2),
   CAT_ID       NUMBER,
   PRD_TYPE_ID  NUMBER,
   SHOP_ID      NUMBER,
-  CREATED_AT   DATE,
-  UPDATED_AT   DATE,
+  CREATED_AT   TIMESTAMP,
+  UPDATED_AT   TIMESTAMP,
   CONSTRAINT UQ_DW_DIM_PRODUCT_NK UNIQUE (PRD_ID)
 );
 
 CREATE TABLE DW_DIM_CAMPAIGN (
   CMP_KEY     NUMBER PRIMARY KEY,
   CMP_ID      NUMBER NOT NULL,
-  CMP_NAME    VARCHAR2(200),
-  DISCOUNT    NUMBER(12,2),
+  CMP_NAME    VARCHAR2(100),
+  DISCOUNT    NUMBER(5,2),
   START_DATE  DATE,
   END_DATE    DATE,
   PERIOD_ID   NUMBER,
-  CREATED_AT  DATE,
-  UPDATED_AT  DATE,
+  CREATED_AT  TIMESTAMP,
+  UPDATED_AT  TIMESTAMP,
   CONSTRAINT UQ_DW_DIM_CAMPAIGN_NK UNIQUE (CMP_ID)
 );
 
--- sequences
+-- Sequences for SK
 CREATE SEQUENCE SEQ_DW_DIM_SHOP     START WITH 1 INCREMENT BY 1 NOCACHE;
 CREATE SEQUENCE SEQ_DW_DIM_PRODUCT  START WITH 1 INCREMENT BY 1 NOCACHE;
 CREATE SEQUENCE SEQ_DW_DIM_CAMPAIGN START WITH 1 INCREMENT BY 1 NOCACHE;
 
--- =========================
--- 4) BRIDGE
--- =========================
+--------------------------------------------------------------------------------
+-- 4) BRIDGE 
+--------------------------------------------------------------------------------
 CREATE TABLE DW_BRIDGE_CAMPAIGN_PRODUCT (
-  CMP_ID NUMBER NOT NULL,
-  PRD_ID NUMBER NOT NULL,
-  CONSTRAINT PK_DW_BRIDGE_CMP_PRD PRIMARY KEY (CMP_ID, PRD_ID)
+  CMP_KEY NUMBER NOT NULL,
+  PRD_KEY NUMBER NOT NULL,
+  CONSTRAINT PK_DW_BRIDGE_CMP_PRD PRIMARY KEY (CMP_KEY, PRD_KEY)
 );
 
--- =========================
--- 5) FACT TABLES
--- =========================
+--------------------------------------------------------------------------------
+-- 5) FACTS
+--------------------------------------------------------------------------------
 CREATE TABLE DW_FACT_ORDER (
   ORD_ID         NUMBER PRIMARY KEY,
   ORDER_DATE     DATE,
   USR_ID         NUMBER,
   PAY_STAT_ID    NUMBER,
-  TOTAL_AMOUNT   NUMBER(12,2),
-  TOTAL_DISCOUNT NUMBER(12,2)
+  TOTAL_AMOUNT   NUMBER(10,2),
+  TOTAL_DISCOUNT NUMBER(10,2)
 );
 
 CREATE TABLE DW_FACT_ORDER_LINE (
@@ -126,17 +143,22 @@ CREATE TABLE DW_FACT_ORDER_LINE (
   PRD_KEY      NUMBER,
   SHP_STAT_ID  NUMBER,
   QTY          NUMBER,
-  UNIT_PRICE   NUMBER(12,2),
-  DISCOUNT     NUMBER(12,2),
+  UNIT_PRICE   NUMBER(10,2),
+  DISCOUNT     NUMBER(5,2),
   LINE_AMOUNT  NUMBER(12,2),
-  RATING       NUMBER,
-  COMMENT_TEXT VARCHAR2(1000),
+  RATING       NUMBER(2,1),
+  COMMENT_TEXT VARCHAR2(255),
   CONSTRAINT PK_DW_FACT_ORDER_LINE PRIMARY KEY (ORD_ID, SEQ)
 );
 
--- =========================
+-- indexes for joins
+CREATE INDEX IX_DW_DIM_PRODUCT_SHOP ON DW_DIM_PRODUCT(SHOP_ID);
+CREATE INDEX IX_DW_FOL_PRDKEY       ON DW_FACT_ORDER_LINE(PRD_KEY);
+CREATE INDEX IX_DW_FOL_SHOPKEY      ON DW_FACT_ORDER_LINE(SHOP_KEY);
+
+--------------------------------------------------------------------------------
 -- 6) ETL PROCEDURE (FULL REFRESH)
--- =========================
+--------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE PR_ETL_FULL_REFRESH AS
 BEGIN
   /* ---------- LOAD STG ---------- */
@@ -171,13 +193,16 @@ BEGIN
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_DIM_SHP_STAT';
   INSERT INTO DW_DIM_SHP_STAT SELECT * FROM SHP_STAT;
 
-  /* ---------- CORE DIM: SHOP (MERGE + CLEAN) ---------- */
+  EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_DIM_PERIOD';
+  INSERT INTO DW_DIM_PERIOD SELECT * FROM PERIOD;
+
+  /* ---------- CORE DIM: SHOP  ---------- */
   MERGE INTO DW_DIM_SHOP d
   USING (
     SELECT
       SHOP_ID,
-      UPPER(TRIM(SHOP_NAME)) AS SHOP_NAME,
-      ROUND(NVL(RATING_AVG, 0), 2) AS RATING_AVG,
+      TRIM(SHOP_NAME) AS SHOP_NAME,
+      RATING_AVG,
       USR_ID,
       CREATED_AT,
       UPDATED_AT
@@ -195,16 +220,16 @@ BEGIN
     INSERT (SHOP_KEY, SHOP_ID, SHOP_NAME, RATING_AVG, USR_ID, CREATED_AT, UPDATED_AT)
     VALUES (SEQ_DW_DIM_SHOP.NEXTVAL, s.SHOP_ID, s.SHOP_NAME, s.RATING_AVG, s.USR_ID, s.CREATED_AT, s.UPDATED_AT);
 
-  /* ---------- CORE DIM: PRODUCT (MERGE + CLEAN) ---------- */
+  /* ---------- CORE DIM: PRODUCT  ---------- */
   MERGE INTO DW_DIM_PRODUCT d
   USING (
     SELECT
       PRD_ID,
-      UPPER(TRIM(NAME)) AS PRD_NAME,
+      TRIM(NAME) AS PRD_NAME,
       NULLIF(TRIM(DESCRIPTION), '') AS DESCRIPTION,
-      ROUND(NVL(PRICE,0), 2) AS PRICE,
-      NVL(STOCK,0) AS STOCK,
-      ROUND(NVL(DISCOUNT,0), 2) AS DISCOUNT,
+      PRICE,
+      STOCK,
+      DISCOUNT,
       CAT_ID,
       PRD_TYPE_ID,
       SHOP_ID,
@@ -229,13 +254,13 @@ BEGIN
     INSERT (PRD_KEY, PRD_ID, PRD_NAME, DESCRIPTION, PRICE, STOCK, DISCOUNT, CAT_ID, PRD_TYPE_ID, SHOP_ID, CREATED_AT, UPDATED_AT)
     VALUES (SEQ_DW_DIM_PRODUCT.NEXTVAL, s.PRD_ID, s.PRD_NAME, s.DESCRIPTION, s.PRICE, s.STOCK, s.DISCOUNT, s.CAT_ID, s.PRD_TYPE_ID, s.SHOP_ID, s.CREATED_AT, s.UPDATED_AT);
 
-  /* ---------- CORE DIM: CAMPAIGN (MERGE + CLEAN) ---------- */
+  /* ---------- CORE DIM: CAMPAIGN  ---------- */
   MERGE INTO DW_DIM_CAMPAIGN d
   USING (
     SELECT
       CMP_ID,
-      UPPER(TRIM(NAME)) AS CMP_NAME,
-      ROUND(NVL(DISCOUNT,0), 2) AS DISCOUNT,
+      TRIM(NAME) AS CMP_NAME,
+      DISCOUNT,
       START_DATE,
       END_DATE,
       PERIOD_ID,
@@ -257,10 +282,15 @@ BEGIN
     INSERT (CMP_KEY, CMP_ID, CMP_NAME, DISCOUNT, START_DATE, END_DATE, PERIOD_ID, CREATED_AT, UPDATED_AT)
     VALUES (SEQ_DW_DIM_CAMPAIGN.NEXTVAL, s.CMP_ID, s.CMP_NAME, s.DISCOUNT, s.START_DATE, s.END_DATE, s.PERIOD_ID, s.CREATED_AT, s.UPDATED_AT);
 
-  /* ---------- BRIDGE ---------- */
+  /* ---------- BRIDGE  ---------- */
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_BRIDGE_CAMPAIGN_PRODUCT';
-  INSERT INTO DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_ID, PRD_ID)
-  SELECT CMP_ID, PRD_ID FROM STG_CMP_PRD;
+  INSERT INTO DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_KEY, PRD_KEY)
+  SELECT DISTINCT
+    cdim.CMP_KEY,
+    pdim.PRD_KEY
+  FROM STG_CMP_PRD cp
+  JOIN DW_DIM_CAMPAIGN cdim ON cdim.CMP_ID = cp.CMP_ID
+  JOIN DW_DIM_PRODUCT  pdim ON pdim.PRD_ID = cp.PRD_ID;
 
   /* ---------- FACT: ORDER HEADER ---------- */
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_FACT_ORDER';
@@ -274,7 +304,7 @@ BEGIN
     ROUND(NVL(TOTAL_DISCOUNT,0),2)
   FROM STG_ORDERS;
 
-  /* ---------- FACT: ORDER LINE (NK -> SK) ---------- */
+  /* ---------- FACT: ORDER LINE  ---------- */
   EXECUTE IMMEDIATE 'TRUNCATE TABLE DW_FACT_ORDER_LINE';
   INSERT INTO DW_FACT_ORDER_LINE (
     ORD_ID, SEQ, ORDER_DATE, USR_ID,
@@ -297,10 +327,9 @@ BEGIN
     d.RATING,
     NULLIF(TRIM(d.COMMENT_TEXT), '')
   FROM STG_ORD_DTL d
-  JOIN STG_ORDERS o   ON o.ORD_ID = d.ORD_ID
-  JOIN STG_PRODUCT p  ON p.PRD_ID = d.PRD_ID
-  JOIN DW_DIM_PRODUCT pdim ON pdim.PRD_ID = p.PRD_ID
-  JOIN DW_DIM_SHOP sdim    ON sdim.SHOP_ID = p.SHOP_ID;
+  JOIN STG_ORDERS o        ON o.ORD_ID = d.ORD_ID
+  JOIN DW_DIM_PRODUCT pdim ON pdim.PRD_ID = d.PRD_ID
+  JOIN DW_DIM_SHOP sdim    ON sdim.SHOP_ID = pdim.SHOP_ID;
 
   COMMIT;
 
@@ -309,11 +338,13 @@ EXCEPTION
     ROLLBACK;
     RAISE;
 END;
+/
+SHOW ERRORS;
 
--- =========================
+--------------------------------------------------------------------------------
 -- 7) RUN ETL
--- =========================
+--------------------------------------------------------------------------------
 BEGIN
   PR_ETL_FULL_REFRESH;
 END;
-
+/
