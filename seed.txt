@@ -1,0 +1,416 @@
+/* =========================================================
+   SEED DATA 
+   - Safe deletes (child -> parent)
+   - Insert APP_USER (4..100)
+   - Create SHOP for sellers (up to 20 shops)
+   - Insert PRD_TYPE (4..30) (no CAT_ID in table)
+   - Insert PRODUCT (3..100) with correct mapping
+   - Insert PERIOD (3..4) if not exists
+   - Insert CAMPAIGN (3..10) with valid PERIOD_ID
+   - Insert ORDERS (3..100) choosing real customers
+   - Insert ORD_DTL for each order choosing real products
+   - Insert CMP_PRD choosing real products (unique per campaign)
+   ========================================================= */
+
+--------------------------------------------------------------------------------
+-- 0) DELETE (child -> parent)  [adjust ranges as you want]
+--------------------------------------------------------------------------------
+BEGIN
+  -- Campaign side
+  DELETE FROM CMP_PRD   WHERE CMP_ID >= 3;
+  DELETE FROM CAMPAIGN  WHERE CMP_ID >= 3;
+
+  -- Orders side
+  DELETE FROM ORD_DTL   WHERE ORD_ID >= 3;
+  DELETE FROM ORDERS    WHERE ORD_ID >= 3;
+
+  -- Products & shops (only those you created in this seed range)
+  DELETE FROM PRODUCT   WHERE PRD_ID >= 3;
+
+  -- If you want to also wipe shops created from this script,
+  -- uncomment next line (be careful if you have real shops)
+  -- DELETE FROM SHOP      WHERE SHOP_ID >= 2;
+
+  -- Users
+  DELETE FROM SHOP      WHERE USR_ID >= 4; -- remove shops owned by seeded users
+  DELETE FROM APP_USER  WHERE USR_ID >= 4;
+
+  -- Types (usually don't delete base types; keep commented)
+  -- DELETE FROM USR_TYPE  WHERE USR_TYPE_ID >= 4;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 1) APP_USER (4..100)
+--    NOTE: assumes USR_TYPE_ID values 1..3 exist
+--------------------------------------------------------------------------------
+BEGIN
+  FOR i IN 4..100 LOOP
+    INSERT INTO APP_USER
+    (USR_ID, USERNAME, PASSWORD, NAME, EMAIL, ADDRESS1, ADDRESS2, TEL1, TEL2, USR_TYPE_ID)
+    VALUES
+    (i,
+     'user' || i,
+     'pass123',
+     'User_' || i,
+     'user' || i || '@mail.com',
+     'Bangkok',
+     NULL,
+     '08' || LPAD(i,8,'0'),
+     NULL,
+     MOD(i,3)+1);
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 2) SHOP (create up to 20 shops for seller users: USR_TYPE_ID = 3)
+--    SHOP has UQ (USR_ID) so we only create if not exists
+--------------------------------------------------------------------------------
+DECLARE
+  v_shop_id NUMBER;
+  v_counter NUMBER := 0;
+
+  TYPE shop_array IS VARRAY(20) OF VARCHAR2(100);
+  v_names shop_array := shop_array(
+    'Fresh Farm Market','Golden Mango Orchard','Organic Harvest Hub','Green Valley Produce',
+    'Tropical Fruit Garden','Thai Agro Fresh','Sunrise Vegetable Farm','Premium Durian House',
+    'Healthy Crop Market','Farm Direct Thailand','Sweet Banana Orchard','เชียงใหม่ผักสด',
+    'สวนผลไม้ลุงสมชาย','ตลาดเกษตรอินทรีย์','ฟาร์มผักปลอดสาร','ราชาผลไม้ไทย',
+    'สวนมะม่วงทอง','ฟาร์มผักไฮโดร','ตลาดผลไม้สดใหม่','สวนเกษตรรุ่งเรือง'
+  );
+BEGIN
+  SELECT NVL(MAX(SHOP_ID),0) + 1 INTO v_shop_id FROM SHOP;
+
+  FOR rec IN (
+    SELECT u.USR_ID
+    FROM APP_USER u
+    WHERE u.USR_TYPE_ID = 3
+      AND NOT EXISTS (SELECT 1 FROM SHOP s WHERE s.USR_ID = u.USR_ID)
+      AND ROWNUM <= 20
+  ) LOOP
+    INSERT INTO SHOP (SHOP_ID, SHOP_NAME, RATING_AVG, USR_ID)
+    VALUES (
+      v_shop_id,
+      v_names(v_counter + 1),
+      CASE WHEN DBMS_RANDOM.VALUE(0,1) < 0.3
+           THEN ROUND(DBMS_RANDOM.VALUE(3.8,4.3),2)
+           ELSE ROUND(DBMS_RANDOM.VALUE(4.3,4.9),2)
+      END,
+      rec.USR_ID
+    );
+
+    v_shop_id := v_shop_id + 1;
+    v_counter := v_counter + 1;
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 3) PRD_TYPE (4..30)  (Your PRD_TYPE table has only: PRD_TYPE_ID, NAME, audit cols)
+--------------------------------------------------------------------------------
+BEGIN
+  -- Fruit-like
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (4,'Papaya');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (5,'Guava');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (6,'Pineapple');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (7,'Longan');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (8,'Rambutan');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (9,'Coconut');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (10,'Watermelon');
+
+  -- Vegetable-like
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (11,'Cabbage');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (12,'Carrot');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (13,'Broccoli');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (14,'Chili');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (15,'Tomato');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (16,'Cucumber');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (17,'Pumpkin');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (18,'Morning Glory');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (19,'Eggplant');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (20,'Onion');
+
+  -- Processed
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (21,'Dried Mango');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (22,'Banana Chips');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (23,'Chili Paste');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (24,'Pickled Cabbage');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (25,'Tomato Sauce');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (26,'Coconut Milk');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (27,'Pumpkin Chips');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (28,'Fried Shallot');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (29,'Garlic Paste');
+  INSERT INTO PRD_TYPE (PRD_TYPE_ID, NAME) VALUES (30,'Fruit Jam');
+
+  COMMIT;
+EXCEPTION
+  WHEN DUP_VAL_ON_INDEX THEN
+    -- If you rerun without deleting PRD_TYPE rows, ignore duplicates
+    ROLLBACK;
+END;
+/
+--------------------------------------------------------------------------------
+-- 4) PRODUCT (3..100)  (Fix mapping: NAME=v_name, DESCRIPTION=text)
+--    - CAT_ID: 1..3 (must exist in CATEGORY)
+--    - PRD_TYPE_ID: choose from 4..10 / 11..20 / 21..30
+--    - SHOP_ID: choose random existing shop
+--------------------------------------------------------------------------------
+DECLARE
+  TYPE name_array IS VARRAY(10) OF VARCHAR2(50);
+
+  fruits name_array := name_array('Mango','Durian','Banana','Papaya','Guava','Pineapple','Longan','Rambutan','Coconut','Watermelon');
+  vegetables name_array := name_array('Cabbage','Carrot','Broccoli','Chili','Tomato','Cucumber','Pumpkin','Morning Glory','Eggplant','Onion');
+  processed name_array := name_array('Dried Mango','Banana Chips','Chili Paste','Pickled Cabbage','Tomato Sauce','Coconut Milk','Pumpkin Chips','Fried Shallot','Garlic Paste','Fruit Jam');
+
+  v_category NUMBER;
+  v_name     VARCHAR2(50);
+  v_shop_id  NUMBER;
+  v_prd_type NUMBER;
+BEGIN
+  FOR i IN 3..100 LOOP
+    v_category := TRUNC(DBMS_RANDOM.VALUE(1,4)); -- 1..3
+
+    IF v_category = 1 THEN
+      v_name := fruits(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+      v_prd_type := TRUNC(DBMS_RANDOM.VALUE(4,11));   -- 4..10
+    ELSIF v_category = 2 THEN
+      v_name := vegetables(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+      v_prd_type := TRUNC(DBMS_RANDOM.VALUE(11,21));  -- 11..20
+    ELSE
+      v_name := processed(TRUNC(DBMS_RANDOM.VALUE(1,11)));
+      v_prd_type := TRUNC(DBMS_RANDOM.VALUE(21,31));  -- 21..30
+    END IF;
+
+    SELECT SHOP_ID INTO v_shop_id
+    FROM (SELECT SHOP_ID FROM SHOP ORDER BY DBMS_RANDOM.VALUE)
+    WHERE ROWNUM = 1;
+
+    INSERT INTO PRODUCT
+    (PRD_ID, NAME, DESCRIPTION, PRICE, STOCK, DISCOUNT, CAT_ID, PRD_TYPE_ID, SHOP_ID)
+    VALUES
+    (i,
+     v_name,
+     CASE WHEN v_category = 1 THEN 'Fruit'
+          WHEN v_category = 2 THEN 'Vegetable'
+          ELSE 'Processed'
+     END,
+     ROUND(DBMS_RANDOM.VALUE(20,200),2),
+     TRUNC(DBMS_RANDOM.VALUE(10,500)),
+     ROUND(DBMS_RANDOM.VALUE(0,20),2),
+     v_category,
+     v_prd_type,
+     v_shop_id);
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 5) PERIOD (insert if not exists)
+--------------------------------------------------------------------------------
+BEGIN
+  MERGE INTO PERIOD p
+  USING (SELECT 3 AS PERIOD_ID, 'Summer Harvest Season' AS NAME,
+                DATE '2026-03-01' AS START_DATE, DATE '2026-05-31' AS END_DATE
+         FROM dual) s
+  ON (p.PERIOD_ID = s.PERIOD_ID)
+  WHEN NOT MATCHED THEN
+    INSERT (PERIOD_ID, NAME, START_DATE, END_DATE)
+    VALUES (s.PERIOD_ID, s.NAME, s.START_DATE, s.END_DATE);
+
+  MERGE INTO PERIOD p
+  USING (SELECT 4 AS PERIOD_ID, 'Rainy Season Promotion' AS NAME,
+                DATE '2026-06-01' AS START_DATE, DATE '2026-10-31' AS END_DATE
+         FROM dual) s
+  ON (p.PERIOD_ID = s.PERIOD_ID)
+  WHEN NOT MATCHED THEN
+    INSERT (PERIOD_ID, NAME, START_DATE, END_DATE)
+    VALUES (s.PERIOD_ID, s.NAME, s.START_DATE, s.END_DATE);
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 6) CAMPAIGN (3..10) with valid PERIOD_ID (random from PERIOD)
+--------------------------------------------------------------------------------
+DECLARE
+  TYPE campaign_array IS VARRAY(20) OF VARCHAR2(100);
+  v_campaigns campaign_array := campaign_array(
+    'Summer Fruit Festival','Fresh Farm Promotion','Organic Harvest Week','Tropical Fruit Fair',
+    'Healthy Veggie Sale','Thai Mango Special','Durian Lover Festival','Weekend Farm Market',
+    'Green Season Promotion','Premium Produce Sale','Flash Sale Friday','Farmer Direct Deal',
+    'Super Saver Harvest','Rainy Season Discount','Golden Banana Week','Seasonal Fresh Picks',
+    'Farm to Table Campaign','Mid-Year Fresh Sale','Vegetable Bonanza','Agro Product Expo'
+  );
+
+  v_name   VARCHAR2(100);
+  v_period NUMBER;
+BEGIN
+  FOR i IN 3..10 LOOP
+    v_name := v_campaigns(TRUNC(DBMS_RANDOM.VALUE(1,21)));
+
+    SELECT PERIOD_ID INTO v_period
+    FROM (SELECT PERIOD_ID FROM PERIOD ORDER BY DBMS_RANDOM.VALUE)
+    WHERE ROWNUM = 1;
+
+    INSERT INTO CAMPAIGN
+    (CMP_ID, NAME, DISCOUNT, START_DATE, END_DATE, PERIOD_ID)
+    VALUES
+    (i,
+     v_name,
+     ROUND(DBMS_RANDOM.VALUE(5,30),2),
+     SYSDATE - TRUNC(DBMS_RANDOM.VALUE(0,30)),
+     SYSDATE + TRUNC(DBMS_RANDOM.VALUE(7,30)),
+     v_period);
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 7) ORDERS (3..100) choose real customer users (USR_TYPE_ID = 1)
+--------------------------------------------------------------------------------
+DECLARE
+  v_total    NUMBER(10,2);
+  v_discount NUMBER(10,2);
+  v_pay_stat NUMBER;
+  v_user     NUMBER;
+BEGIN
+  FOR i IN 3..100 LOOP
+    -- pick a real customer
+    SELECT USR_ID INTO v_user
+    FROM (
+      SELECT USR_ID
+      FROM APP_USER
+      WHERE USR_TYPE_ID = 1
+      ORDER BY DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    v_total    := ROUND(DBMS_RANDOM.VALUE(200,5000),2);
+    v_discount := ROUND(v_total * DBMS_RANDOM.VALUE(0,0.2),2);
+
+    IF DBMS_RANDOM.VALUE < 0.7 THEN
+      v_pay_stat := 2; -- Paid
+    ELSIF DBMS_RANDOM.VALUE < 0.9 THEN
+      v_pay_stat := 1; -- Pending
+    ELSE
+      v_pay_stat := 3; -- Cancelled
+    END IF;
+
+    INSERT INTO ORDERS
+    (ORD_ID, ORDER_DATE, TOTAL_AMOUNT, TOTAL_DISCOUNT, USR_ID, PAY_STAT_ID)
+    VALUES
+    (i,
+     SYSDATE - TRUNC(DBMS_RANDOM.VALUE(0,60)),
+     v_total,
+     v_discount,
+     v_user,
+     v_pay_stat);
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 8) ORD_DTL (for each order 1..5 lines, pick real product)
+--    SEQ is auto by trigger TRG_ORD_DTL_SEQ (per ORD_ID)
+--    SHP_STAT_ID assumed exists 1..3
+--------------------------------------------------------------------------------
+DECLARE
+  v_price    PRODUCT.PRICE%TYPE;
+  v_qty      NUMBER;
+  v_discount NUMBER(5,2);
+  v_ship_status NUMBER;
+  v_prd_id   NUMBER;
+  v_item_count NUMBER;
+BEGIN
+  FOR o IN (SELECT ORD_ID, PAY_STAT_ID FROM ORDERS WHERE ORD_ID BETWEEN 3 AND 100) LOOP
+    v_item_count := TRUNC(DBMS_RANDOM.VALUE(1,6)); -- 1..5
+
+    FOR j IN 1..v_item_count LOOP
+      -- pick a real product & its price
+      SELECT PRD_ID, NVL(PRICE,0)
+      INTO v_prd_id, v_price
+      FROM (SELECT PRD_ID, PRICE FROM PRODUCT ORDER BY DBMS_RANDOM.VALUE)
+      WHERE ROWNUM = 1;
+
+      v_qty := TRUNC(DBMS_RANDOM.VALUE(1,5));
+
+      -- ship status depends on pay status (example logic)
+      IF o.PAY_STAT_ID = 3 THEN
+        v_ship_status := 1; -- Cancel
+      ELSIF o.PAY_STAT_ID = 2 THEN
+        v_ship_status := TRUNC(DBMS_RANDOM.VALUE(2,4)); -- 2..3
+      ELSE
+        v_ship_status := 1;
+      END IF;
+
+      v_discount := ROUND(v_price * DBMS_RANDOM.VALUE(0,0.10), 2);
+
+      INSERT INTO ORD_DTL
+      (ORD_ID, QTY, UNIT_PRICE, DISCOUNT, COMMENT_TEXT, RATING, PRD_ID, SHP_STAT_ID)
+      VALUES
+      (o.ORD_ID,
+       v_qty,
+       v_price,
+       v_discount,
+       CASE WHEN v_ship_status = 3 THEN 'Good quality' ELSE NULL END,
+       CASE WHEN v_ship_status = 3 THEN TRUNC(DBMS_RANDOM.VALUE(3,6)) ELSE NULL END,
+       v_prd_id,
+       v_ship_status);
+    END LOOP;
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 9) CMP_PRD (for each campaign pick 5..15 unique products)
+--    SEQ auto by trigger TRG_CMP_PRD_SEQ (per CMP_ID)
+--------------------------------------------------------------------------------
+DECLARE
+  v_prd_id NUMBER;
+  v_item_count NUMBER;
+  v_exist NUMBER;
+BEGIN
+  FOR c IN (SELECT CMP_ID FROM CAMPAIGN WHERE CMP_ID BETWEEN 3 AND 10) LOOP
+    v_item_count := TRUNC(DBMS_RANDOM.VALUE(5,16)); -- 5..15
+
+    FOR i IN 1..v_item_count LOOP
+      LOOP
+        SELECT PRD_ID INTO v_prd_id
+        FROM (SELECT PRD_ID FROM PRODUCT ORDER BY DBMS_RANDOM.VALUE)
+        WHERE ROWNUM = 1;
+
+        SELECT COUNT(*)
+        INTO v_exist
+        FROM CMP_PRD
+        WHERE CMP_ID = c.CMP_ID
+          AND PRD_ID = v_prd_id;
+
+        EXIT WHEN v_exist = 0;
+      END LOOP;
+
+      INSERT INTO CMP_PRD (CMP_ID, PRD_ID)
+      VALUES (c.CMP_ID, v_prd_id);
+    END LOOP;
+  END LOOP;
+
+  COMMIT;
+END;
+/
+--------------------------------------------------------------------------------
+-- 10) QUICK CHECK (optional)
+--------------------------------------------------------------------------------
+-- SELECT COUNT(*) FROM APP_USER;
+-- SELECT COUNT(*) FROM SHOP;
+-- SELECT COUNT(*) FROM PRODUCT;
+-- SELECT COUNT(*) FROM ORDERS;
+-- SELECT COUNT(*) FROM ORD_DTL;
+-- SELECT COUNT(*) FROM CAMPAIGN;
+-- SELECT COUNT(*) FROM CMP_PRD;
