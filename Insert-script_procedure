@@ -1,3 +1,31 @@
+=== เรียกดู ===
+SELECT 
+    c.CMP_ID,
+    c.NAME AS CAMPAIGN_NAME,
+    c.DISCOUNT,
+    c.START_DATE,
+    c.END_DATE,
+    p.NAME AS PERIOD_NAME
+FROM CAMPAIGN c
+JOIN PERIOD p ON c.PERIOD_ID = p.PERIOD_ID
+ORDER BY c.CMP_ID;
+
+================
+SELECT
+    o.ORDER_ID        AS "Receipt No",
+    o.ORDER_DATE      AS "Order Date",
+    u.NAME            AS "Customer",
+    s.SHOP_NAME       AS "Shop",
+    p.PRODUCT_NAME    AS "Product",
+    od.QTY            AS "Qty",
+    od.PRICE          AS "Unit Price",
+    (od.QTY * od.PRICE) AS "Total"
+FROM ORDERS o
+JOIN APP_USER u ON o.USR_ID = u.USR_ID
+JOIN SHOP s ON o.SHOP_ID = s.SHOP_ID
+JOIN ORD_DTL od ON o.ORDER_ID = od.ORDER_ID
+JOIN PRODUCT p ON od.PRODUCT_ID = p.PRODUCT_ID
+ORDER BY o.ORDER_ID;
 === delete ===
 DELETE FROM USR_TYPE WHERE USR_TYPE_ID >= 4;
 DELETE FROM APP_USER WHERE USR_ID >= 4;
