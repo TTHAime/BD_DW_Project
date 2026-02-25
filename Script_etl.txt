@@ -238,7 +238,7 @@ BEGIN
       p.STOCK,
       p.DISCOUNT,
 
-      pt.CAT_ID          AS CAT_ID,       -- ✅ from PRD_TYPE
+      pt.CAT_ID          AS CAT_ID,      
       p.PRD_TYPE_ID,
 
       p.SHOP_ID,
@@ -359,3 +359,4 @@ BEGIN
   PR_ETL_FULL_REFRESH;
 END;
 / 
+
