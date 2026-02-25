@@ -1,3 +1,24 @@
+-- =========================================================
+-- OPTIONAL: DROP เฉพาะ objects ชุดนี้ก่อน 
+-- =========================================================
+BEGIN
+  FOR x IN (SELECT trigger_name FROM user_triggers
+            WHERE trigger_name IN ('TRG_ORD_DTL_SEQ','TRG_CMP_PRD_SEQ')) LOOP
+    EXECUTE IMMEDIATE 'DROP TRIGGER ' || x.trigger_name;
+  END LOOP;
+
+  FOR x IN (SELECT table_name FROM user_tables
+            WHERE table_name IN (
+              'CMP_PRD','CAMPAIGN','ORD_DTL','ORDERS','PRODUCT','SHOP',
+              'PERIOD','SHP_STAT','PAY_STAT','PRD_TYPE','CATEGORY','APP_USER','USR_TYPE'
+            )) LOOP
+    EXECUTE IMMEDIATE 'DROP TABLE ' || x.table_name || ' CASCADE CONSTRAINTS PURGE';
+  END LOOP;
+END;
+/
+-- =========================================================
+-- 1) MASTER / LOOKUP
+-- =========================================================
 CREATE TABLE USR_TYPE (
     USR_TYPE_ID NUMBER PRIMARY KEY,
     NAME        VARCHAR2(100) NOT NULL,
@@ -40,20 +61,22 @@ CREATE TABLE CATEGORY (
     UPDATED_BY NUMBER
 );
 
+-- ✅ FIXED: เพิ่ม CAT_ID + ใส่ comma ก่อน CONSTRAINT
 CREATE TABLE PRD_TYPE (
     PRD_TYPE_ID NUMBER PRIMARY KEY,
+    CAT_ID      NUMBER NOT NULL,
     NAME        VARCHAR2(100) NOT NULL,
 
     CREATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
     UPDATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
     CREATED_BY  NUMBER,
-    UPDATED_BY  NUMBER
+    UPDATED_BY  NUMBER,
 
     CONSTRAINT FK_PRD_TYPE_CAT
         FOREIGN KEY (CAT_ID)
         REFERENCES CATEGORY(CAT_ID),
 
-    -- กันชื่อ type ซ้ำในหมวดเดียวกัน 
+    -- กันชื่อ type ซ้ำในหมวดเดียวกัน
     CONSTRAINT UQ_PRD_TYPE_CAT_NAME
         UNIQUE (CAT_ID, NAME)
 );
@@ -90,8 +113,9 @@ CREATE TABLE PERIOD (
     UPDATED_BY NUMBER
 );
 
-
-
+-- =========================================================
+-- 2) CORE
+-- =========================================================
 CREATE TABLE SHOP (
     SHOP_ID    NUMBER PRIMARY KEY,
     SHOP_NAME  VARCHAR2(100) NOT NULL,
@@ -140,12 +164,12 @@ CREATE TABLE PRODUCT (
 );
 
 CREATE TABLE ORDERS (
-    ORD_ID      NUMBER PRIMARY KEY,
-    ORDER_DATE  DATE,
+    ORD_ID         NUMBER PRIMARY KEY,
+    ORDER_DATE     DATE,
     TOTAL_AMOUNT   NUMBER(10,2),
     TOTAL_DISCOUNT NUMBER(10,2),
-    USR_ID      NUMBER NOT NULL,
-    PAY_STAT_ID NUMBER NOT NULL,
+    USR_ID         NUMBER NOT NULL,
+    PAY_STAT_ID    NUMBER NOT NULL,
 
     CREATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
     UPDATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
@@ -161,18 +185,16 @@ CREATE TABLE ORDERS (
         REFERENCES PAY_STAT(PAY_STAT_ID)
 );
 
-
-
 CREATE TABLE ORD_DTL (
-    ORD_ID      NUMBER NOT NULL,
-    SEQ         NUMBER NOT NULL,
-    QTY         NUMBER,
-    UNIT_PRICE  NUMBER(10,2),
-    DISCOUNT    NUMBER(5,2),
+    ORD_ID       NUMBER NOT NULL,
+    SEQ          NUMBER NOT NULL,
+    QTY          NUMBER,
+    UNIT_PRICE   NUMBER(10,2),
+    DISCOUNT     NUMBER(5,2),
     COMMENT_TEXT VARCHAR2(255),
-    RATING      NUMBER(2,1),
-    PRD_ID      NUMBER NOT NULL,
-    SHP_STAT_ID NUMBER NOT NULL,
+    RATING       NUMBER(2,1),
+    PRD_ID       NUMBER NOT NULL,
+    SHP_STAT_ID  NUMBER NOT NULL,
 
     CREATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
     UPDATED_AT  TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
@@ -195,6 +217,9 @@ CREATE TABLE ORD_DTL (
         REFERENCES SHP_STAT(SHP_STAT_ID)
 );
 
+-- =========================================================
+-- 3) TRIGGER: auto SEQ per ORD_ID
+-- =========================================================
 CREATE OR REPLACE TRIGGER TRG_ORD_DTL_SEQ
 BEFORE INSERT ON ORD_DTL
 FOR EACH ROW
@@ -207,10 +232,9 @@ BEGIN
   END IF;
 END;
 /
-SHOW ERRORS;
-
-
-
+-- =========================================================
+-- 4) CAMPAIGN
+-- =========================================================
 CREATE TABLE CAMPAIGN (
     CMP_ID     NUMBER PRIMARY KEY,
     NAME       VARCHAR2(100),
@@ -266,7 +290,3 @@ BEGIN
   END IF;
 END;
 /
-SHOW ERRORS;
-
-
-
