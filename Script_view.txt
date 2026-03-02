@@ -2,39 +2,71 @@
 -- Order Line Flat
 --------------------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW VW_DASH_ORDER_LINE AS
+CREATE OR REPLACE VIEW ORDER_LINE_FLAT AS
 SELECT
-  l.ORD_ID,
-  l.SEQ,
-  l.ORDER_DATE,
-  l.USR_ID,
-  l.SHP_STAT_ID,
-  l.QTY,
-  l.UNIT_PRICE,
-  l.DISCOUNT              AS LINE_DISCOUNT,
-  l.LINE_AMOUNT           AS NET_LINE_AMOUNT,
+  /* Category */
+  cat.CAT_ID                                 AS CAT_ID,
+  cat.NAME                                   AS CAT_NAME,
 
-  o.PAY_STAT_ID,
-  o.TOTAL_AMOUNT          AS GROSS_ORDER_AMOUNT,
-  o.TOTAL_DISCOUNT        AS ORDER_DISCOUNT,
+  /* Line */
+  fol.COMMENT_TEXT                           AS COMMENT_TEXT,
+  pdim.DESCRIPTION                           AS DESCRIPTION,
+  fol.LINE_AMOUNT                            AS LINE_AMOUNT,
+  fol.DISCOUNT                               AS LINE_DISCOUNT,
+  (NVL(fol.QTY,0) * NVL(fol.UNIT_PRICE,0))    AS LIST_PRICE,
 
-  s.SHOP_ID,
-  s.SHOP_NAME,
+  /* Order */
+  fol.ORD_ID                                 AS ORD_ID,
+  fo.ORDER_DATE                              AS ORDER_DATE,
+  fo.PAY_STAT_ID                             AS PAY_STAT_ID,
+  pay.NAME                                   AS PAY_STAT_NAME,
 
-  p.PRD_ID,
-  p.PRD_NAME,
-  p.CAT_ID,
-  p.PRD_TYPE_ID,
-  p.PRICE                 AS LIST_PRICE,
-  p.DISCOUNT              AS PRD_DISCOUNT
+  /* Product */
+  pdim.DISCOUNT                              AS PRD_DISCOUNT,
+  pdim.PRD_ID                                AS PRD_ID,
+  fol.PRD_KEY                                AS PRD_KEY,
+  pdim.PRD_NAME                              AS PRD_NAME,
+  pdim.PRD_TYPE_ID                           AS PRD_TYPE_ID,
+  ptype.NAME                                 AS PRD_TYPE_NAME,
 
-FROM DW_FACT_ORDER_LINE l
-JOIN DW_FACT_ORDER o
-  ON o.ORD_ID = l.ORD_ID
-LEFT JOIN DW_DIM_SHOP s
-  ON s.SHOP_KEY = l.SHOP_KEY
-LEFT JOIN DW_DIM_PRODUCT p
-  ON p.PRD_KEY = l.PRD_KEY;
+  /* More line fields */
+  fol.QTY                                    AS QTY,
+  fol.RATING                                 AS RATING,
+
+  /* Shop */
+  sdim.RATING_AVG                            AS RATING_AVG,
+  fol.SEQ                                    AS SEQ,
+  sdim.SHOP_ID                               AS SHOP_ID,
+  fol.SHOP_KEY                               AS SHOP_KEY,
+  sdim.SHOP_NAME                             AS SHOP_NAME,
+
+  /* Shipping status */
+  fol.SHP_STAT_ID                            AS SHP_STAT_ID,
+  shp.NAME                                   AS SHP_STAT_NAME,
+
+  /* Order totals */
+  fo.TOTAL_AMOUNT                            AS TOTAL_AMOUNT,
+  fo.TOTAL_DISCOUNT                          AS TOTAL_DISCOUNT,
+
+  /* Unit price + user */
+  fol.UNIT_PRICE                             AS UNIT_PRICE,
+  fo.USR_ID                                  AS USR_ID
+
+FROM DW_FACT_ORDER_LINE fol
+JOIN DW_FACT_ORDER fo
+  ON fo.ORD_ID = fol.ORD_ID
+LEFT JOIN DW_DIM_PRODUCT pdim
+  ON pdim.PRD_KEY = fol.PRD_KEY
+LEFT JOIN DW_DIM_SHOP sdim
+  ON sdim.SHOP_KEY = fol.SHOP_KEY
+LEFT JOIN DW_DIM_CATEGORY cat
+  ON cat.CAT_ID = pdim.CAT_ID
+LEFT JOIN DW_DIM_PRD_TYPE ptype
+  ON ptype.PRD_TYPE_ID = pdim.PRD_TYPE_ID
+LEFT JOIN DW_DIM_PAY_STAT pay
+  ON pay.PAY_STAT_ID = fo.PAY_STAT_ID
+LEFT JOIN DW_DIM_SHP_STAT shp
+  ON shp.SHP_STAT_ID = fol.SHP_STAT_ID;
 --------------------------------------------------------------------------------
 -- Campaign ↔ Product
 --------------------------------------------------------------------------------
