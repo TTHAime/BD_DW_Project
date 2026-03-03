@@ -1,60 +1,70 @@
 --------------------------------------------------------------------------------
--- Order Line Flat
+-- Order Line Flat (match ETL ใหม่ + DATE_KEY)
 --------------------------------------------------------------------------------
-
 CREATE OR REPLACE VIEW ORDER_LINE_FLAT AS
 SELECT
+  /* Date (from DW_DIM_DATE) */
+  fo.ORDER_DATE_KEY                           AS ORDER_DATE_KEY,
+  dd.DATE_VALUE                               AS DATE_VALUE,
+  dd.MONTH_NUM                                AS MONTH_NUM,
+  dd.MONTH_NAME                               AS MONTH_NAME,
+  dd.QUARTER_NUM                              AS QUARTER_NUM,
+  dd.YEAR_NUM                                 AS YEAR_NUM,
+  dd.IS_WEEKEND                               AS IS_WEEKEND,
+
   /* Category */
-  cat.CAT_ID                                 AS CAT_ID,
-  cat.NAME                                   AS CAT_NAME,
+  cat.CAT_ID                                  AS CAT_ID,
+  cat.NAME                                    AS CAT_NAME,
 
   /* Line */
-  fol.COMMENT_TEXT                           AS COMMENT_TEXT,
-  pdim.DESCRIPTION                           AS DESCRIPTION,
-  fol.LINE_AMOUNT                            AS LINE_AMOUNT,
-  fol.DISCOUNT                               AS LINE_DISCOUNT,
-  (NVL(fol.QTY,0) * NVL(fol.UNIT_PRICE,0))    AS LIST_PRICE,
+  fol.COMMENT_TEXT                            AS COMMENT_TEXT,
+  pdim.DESCRIPTION                            AS DESCRIPTION,
+  fol.LINE_AMOUNT                             AS LINE_AMOUNT,
+  fol.DISCOUNT                                AS LINE_DISCOUNT,
+  (NVL(fol.QTY,0) * NVL(fol.UNIT_PRICE,0))     AS LIST_PRICE,
 
   /* Order */
-  fol.ORD_ID                                 AS ORD_ID,
-  fo.ORDER_DATE                              AS ORDER_DATE,
-  fo.PAY_STAT_ID                             AS PAY_STAT_ID,
-  pay.NAME                                   AS PAY_STAT_NAME,
+  fol.ORD_ID                                  AS ORD_ID,
+  fo.ORDER_DATE                               AS ORDER_DATE,
+  fo.PAY_STAT_ID                              AS PAY_STAT_ID,
+  pay.NAME                                    AS PAY_STAT_NAME,
 
   /* Product */
-  pdim.DISCOUNT                              AS PRD_DISCOUNT,
-  pdim.PRD_ID                                AS PRD_ID,
-  fol.PRD_KEY                                AS PRD_KEY,
-  pdim.PRD_NAME                              AS PRD_NAME,
-  pdim.PRD_TYPE_ID                           AS PRD_TYPE_ID,
-  ptype.NAME                                 AS PRD_TYPE_NAME,
+  pdim.DISCOUNT                               AS PRD_DISCOUNT,
+  pdim.PRD_ID                                 AS PRD_ID,
+  fol.PRD_KEY                                 AS PRD_KEY,
+  pdim.PRD_NAME                               AS PRD_NAME,
+  pdim.PRD_TYPE_ID                            AS PRD_TYPE_ID,
+  ptype.NAME                                  AS PRD_TYPE_NAME,
 
   /* More line fields */
-  fol.QTY                                    AS QTY,
-  fol.RATING                                 AS RATING,
+  fol.QTY                                     AS QTY,
+  fol.RATING                                  AS RATING,
 
   /* Shop */
-  sdim.RATING_AVG                            AS RATING_AVG,
-  fol.SEQ                                    AS SEQ,
-  sdim.SHOP_ID                               AS SHOP_ID,
-  fol.SHOP_KEY                               AS SHOP_KEY,
-  sdim.SHOP_NAME                             AS SHOP_NAME,
+  sdim.RATING_AVG                             AS RATING_AVG,
+  fol.SEQ                                     AS SEQ,
+  sdim.SHOP_ID                                AS SHOP_ID,
+  fol.SHOP_KEY                                AS SHOP_KEY,
+  sdim.SHOP_NAME                              AS SHOP_NAME,
 
   /* Shipping status */
-  fol.SHP_STAT_ID                            AS SHP_STAT_ID,
-  shp.NAME                                   AS SHP_STAT_NAME,
+  fol.SHP_STAT_ID                             AS SHP_STAT_ID,
+  shp.NAME                                    AS SHP_STAT_NAME,
 
   /* Order totals */
-  fo.TOTAL_AMOUNT                            AS TOTAL_AMOUNT,
-  fo.TOTAL_DISCOUNT                          AS TOTAL_DISCOUNT,
+  fo.TOTAL_AMOUNT                             AS TOTAL_AMOUNT,
+  fo.TOTAL_DISCOUNT                           AS TOTAL_DISCOUNT,
 
   /* Unit price + user */
-  fol.UNIT_PRICE                             AS UNIT_PRICE,
-  fo.USR_ID                                  AS USR_ID
+  fol.UNIT_PRICE                              AS UNIT_PRICE,
+  fo.USR_ID                                   AS USR_ID
 
 FROM DW_FACT_ORDER_LINE fol
 JOIN DW_FACT_ORDER fo
   ON fo.ORD_ID = fol.ORD_ID
+LEFT JOIN DW_DIM_DATE dd
+  ON dd.DATE_KEY = fo.ORDER_DATE_KEY
 LEFT JOIN DW_DIM_PRODUCT pdim
   ON pdim.PRD_KEY = fol.PRD_KEY
 LEFT JOIN DW_DIM_SHOP sdim
@@ -66,24 +76,32 @@ LEFT JOIN DW_DIM_PRD_TYPE ptype
 LEFT JOIN DW_DIM_PAY_STAT pay
   ON pay.PAY_STAT_ID = fo.PAY_STAT_ID
 LEFT JOIN DW_DIM_SHP_STAT shp
-  ON shp.SHP_STAT_ID = fol.SHP_STAT_ID;
---------------------------------------------------------------------------------
--- Campaign ↔ Product
---------------------------------------------------------------------------------
+  ON shp.SHP_STAT_ID = fol.SHP_STAT_ID
+;
+/
 
+--------------------------------------------------------------------------------
+-- Campaign ↔ Product (match ETL ใหม่: bridge เก็บ CMP_ID, PRD_ID)
+--------------------------------------------------------------------------------
 CREATE OR REPLACE VIEW VW_DASH_CAMPAIGN_PRODUCT AS
 SELECT
   c.CMP_ID,
   c.CMP_NAME,
-  c.DISCOUNT AS CMP_DISCOUNT,
+  c.DISCOUNT  AS CMP_DISCOUNT,
   c.START_DATE,
   c.END_DATE,
   c.PERIOD_ID,
-  b.PRD_KEY,
+
+  p.PRD_KEY,
   p.PRD_ID,
   p.PRD_NAME,
   p.CAT_ID,
   p.PRD_TYPE_ID
+
 FROM DW_BRIDGE_CAMPAIGN_PRODUCT b
-JOIN DW_DIM_CAMPAIGN c ON c.CMP_KEY = b.CMP_KEY
-JOIN DW_DIM_PRODUCT  p ON p.PRD_KEY = b.PRD_KEY;
+JOIN DW_DIM_CAMPAIGN c
+  ON c.CMP_ID = b.CMP_ID
+JOIN DW_DIM_PRODUCT p
+  ON p.PRD_ID = b.PRD_ID
+;
+/
