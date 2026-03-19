@@ -1,9 +1,9 @@
 --------------------------------------------------------------------------------
--- Order Line Flat (match ETL ใหม่ + DATE_KEY)
+-- Order Line Flat 
 --------------------------------------------------------------------------------
 CREATE OR REPLACE VIEW ORDER_LINE_FLAT AS
 SELECT
-  /* Date (from DW_DIM_DATE) */
+  /* Date */
   fo.ORDER_DATE_KEY                           AS ORDER_DATE_KEY,
   dd.DATE_VALUE                               AS DATE_VALUE,
   dd.MONTH_NUM                                AS MONTH_NUM,
@@ -81,7 +81,7 @@ LEFT JOIN DW_DIM_SHP_STAT shp
 /
 
 --------------------------------------------------------------------------------
--- Campaign ↔ Product (match ETL ใหม่: bridge เก็บ CMP_ID, PRD_ID)
+-- Campaign ↔ Product 
 --------------------------------------------------------------------------------
 CREATE OR REPLACE VIEW VW_DASH_CAMPAIGN_PRODUCT AS
 SELECT
