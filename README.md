@@ -13,11 +13,21 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
 ## Architecture
  
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Source DB   │────▶│   Staging    │────▶│     Data     │────▶│  Power BI    │
-│  (OLTP)      │ ETL │  (STG_*)     │Clean│  Warehouse   │ API │  Dashboard   │
-│              │     │              │     │  (DW_*)      │     │              │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
-     database/            database/            database/            api/
-     seed/                etl/                 ddl/ + views/        server.js
+┌──────────────┐     ┌──────────────┐     ┌────────────────┐
+│  Source DB   │────▶│   Staging    │────▶│ Data Warehouse │
+│   (OLTP)     │ ETL │   (STG_*)    │Clean│    (DW_*)      │
+└──────────────┘     └──────────────┘     └────────────────┘
+     database/            database/              database/
+       seed/                etl/               ddl/ + views/
+                                                      │
+                                 ┌────────────────────┴────────────────────┐
+                                 │                                         │
+                                 ▼                                         ▼
+                        ┌──────────────┐                          ┌──────────────┐
+                        │   REST API   │                          │   Power BI   │
+                        │  server.js   │                          │  Dashboard   │
+                        └──────────────┘                          └──────────────┘
+                                 │                                         ▲
+                                 └────────────────────▶────────────────────┘
+                                              API / Direct Connect
 ```
