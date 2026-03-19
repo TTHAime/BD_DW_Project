@@ -15,12 +15,13 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
  
 | Technology | Version | Role |
 |------------|---------|------|
-| Oracle Database | 19c+ | Data Warehouse storage and ETL execution |
+| Oracle Database | 26 | Data Warehouse storage and ETL execution |
 | PL/SQL | — | ETL procedures and triggers |
 | Node.js | 18+ | REST API runtime |
 | Express.js | 4.x | HTTP routing framework |
 | node-oracledb | 6.x | Oracle Database connector for Node.js |
 | Power BI | Desktop | Dashboard and data visualization |
+| Docker | Desktop | Container host for Oracle Database |
  
 ---
  
@@ -84,4 +85,38 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
  
 Bridge: DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_ID ↔ PRD_ID)
 ```
+
+## Project Structure
  
+```
+📦 e-commerce-data-warehouse/
+│
+├── 📁 database/                        # All SQL scripts
+│   │
+│   ├── 📁 ddl/                         # Data Definition Language
+│   │   ├── 00_drop_all.sql             #   Drop all tables, sequences, procedures
+│   │   └── 01_create_tables.sql        #   CREATE TABLE, SEQUENCE, INDEX
+│   │
+│   ├── 📁 etl/                         # Extract-Transform-Load
+│   │   └── pr_etl_full_refresh.sql     #   Stored procedure for full refresh ETL
+│   │
+│   ├── 📁 seed/                        # Data population
+│   │   ├── 01_seed_lookup.sql          #   Seed lookup tables (CATEGORY, PRD_TYPE, ...)
+│   │   ├── 02_insert_full.sql          #   Full dataset insert
+│   │   ├── 03_insert_mini.sql          #   Small sample dataset (for testing)
+│   │   └── 📁 procedures/              #   Additional stored procedures
+│   │
+│   ├── 📁 views/                       # Database views
+│   │   └── dashboard_views.sql         #   ORDER_LINE_FLAT, VW_DASH_CAMPAIGN_PRODUCT
+│   │
+│   └── 📁 triggers/                    # Triggers
+│       └── triggers.sql                #   Database trigger scripts
+│
+├── 📁 api/                             # REST API (Node.js)
+│   ├── server.js                       #   Express server + Oracle connection
+│   ├── package.json                    #   npm dependencies
+│   └── .env                            #   Environment variables (not in git)
+│
+├── .gitignore
+└── README.md
+```
