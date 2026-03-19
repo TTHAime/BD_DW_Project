@@ -9,6 +9,20 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
 - **REST API** — Node.js + Express serving data from Oracle to downstream consumers
 - **Dashboard** — Power BI connected through the API, delivering 5 executive reports
 
+---
+ 
+## Tech Stack
+ 
+| Technology | Version | Role |
+|------------|---------|------|
+| Oracle Database | 19c+ | Data Warehouse storage and ETL execution |
+| PL/SQL | — | ETL procedures and triggers |
+| Node.js | 18+ | REST API runtime |
+| Express.js | 4.x | HTTP routing framework |
+| node-oracledb | 6.x | Oracle Database connector for Node.js |
+| Power BI | Desktop | Dashboard and data visualization |
+ 
+---
  
 ## Architecture
  
@@ -18,8 +32,8 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
 │   (OLTP)     │ ETL │   (STG_*)    │Clean│    (DW_*)      │
 └──────────────┘     └──────────────┘     └────────────────┘
      database/            database/              database/
-       seed/                etl/               ddl/ + views/
-                                                      │
+       seed/                etl/                 + views/
+                                                      │      Direct Connect
                                  ┌────────────────────┴────────────────────┐
                                  │                                         │
                                  ▼                                         ▼
@@ -29,5 +43,45 @@ This project implements an end-to-end Data Warehouse for an Agricultural product
                         └──────────────┘                          └──────────────┘
                                  │                                         ▲
                                  └────────────────────▶────────────────────┘
-                                              API / Direct Connect
+                                                    API 
 ```
+
+## Star Schema
+ 
+```
+                    ┌─────────────────┐
+                    │  DW_DIM_DATE    │
+                    │  DATE_KEY (PK)  │
+                    │  YEAR, QUARTER  │
+                    │  MONTH, WEEK    │
+                    └────────┬────────┘
+                             │
+┌─────────────────┐          │          ┌─────────────────┐
+│ DW_DIM_PRODUCT  │          │          │  DW_DIM_SHOP    │
+│ PRD_KEY (PK)    │──┐       │       ┌──│  SHOP_KEY (PK)  │
+│ PRD_NAME, PRICE │  │       │       │  │  SHOP_NAME      │
+│ STOCK, DISCOUNT │  │       │       │  │  RATING_AVG     │
+└─────────────────┘  │       │       │  └─────────────────┘
+                     ▼       ▼       ▼
+               ┌────────────────────────────┐
+               │   DW_FACT_ORDER_LINE       │
+               │   ORD_ID + SEQ (PK)        │
+               │   ORDER_DATE_KEY (FK)      │
+               │   PRD_KEY, SHOP_KEY (FK)   │
+               │   QTY, UNIT_PRICE          │
+               │   DISCOUNT, LINE_AMOUNT    │
+               │   RATING, COMMENT_TEXT     │
+               └──────────┬─────────────────┘
+                     │       │       │
+                     ▼       ▼       ▼
+┌─────────────────┐  │       │       │  ┌─────────────────┐
+│ DW_DIM_CATEGORY │──┘       │       └──│ DW_DIM_SHP_STAT │
+│ CAT_ID (PK)     │          │          │ SHP_STAT_ID(PK) │
+└─────────────────┘ ┌────────┴────────┐ └─────────────────┘
+                    │ DW_DIM_PAY_STAT │
+                    │ PAY_STAT_ID(PK) │
+                    └─────────────────┘
+ 
+Bridge: DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_ID ↔ PRD_ID)
+```
+ 
