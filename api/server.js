@@ -10,14 +10,14 @@ app.use(express.json());
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 
 // Optional: fetch DATE/TIMESTAMP as JS Date (default is OK too)
-oracledb.fetchAsString = [oracledb.CLOB]; // if you ever have CLOB
-// oracledb.fetchAsBuffer = []; // not needed
+oracledb.fetchAsString = [oracledb.CLOB]; 
 
-const ORACLE_USER = process.env.ORACLE_USER || "ADMINDB";
-const ORACLE_PASS = process.env.ORACLE_PASS || "sql123";
-const ORACLE_HOST = process.env.ORACLE_HOST || "localhost";
-const ORACLE_PORT = process.env.ORACLE_PORT || "1521";
-const ORACLE_SERVICE = process.env.ORACLE_SERVICE || "FREEPDB1";
+
+const ORACLE_USER = process.env.ORACLE_USER ;
+const ORACLE_PASS = process.env.ORACLE_PASS ;
+const ORACLE_HOST = process.env.ORACLE_HOST ;
+const ORACLE_PORT = process.env.ORACLE_PORT ;
+const ORACLE_SERVICE = process.env.ORACLE_SERVICE ;
 
 const connectString = `//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE}`;
 
