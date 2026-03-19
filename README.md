@@ -89,34 +89,27 @@ Bridge: DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_ID ↔ PRD_ID)
 ## Project Structure
  
 ```
-📦 e-commerce-data-warehouse/
+e-commerce-data-warehouse/
+│  ├─ ddl/                   # Database structure
+│  │  ├─ create_tables.sql      # CREATE TABLE, SEQUENCE, INDEX
+│  │  └─ create_triggers.sql    # Trigger definitions
+│  │  └─ drop_tables.sql        #  Drop tables, sequences, procedures
+│  │ 
+│  ├─ seed/                     # Seed and sample data
+│  │  ├─ seed_data.sql                   # Full sample dataset
+│  │  ├─ seed_sample_data.sql            # seed minimum data
+│  │  └─ insert_sample_data.sql          #  1 order for testing
+│  │
+│  ├─ etl/                      # ETL scripts
+│  │  └─ etl_full_load.sql      # Full refresh ETL procedure
+│  │
+│  ├─ views/                    # Reporting views
+│  │  └─ create_views.sql       # ORDER_LINE_FLAT, VW_DASH_CAMPAIGN_PRODUCT
 │
-├── 📁 database/                        # All SQL scripts
-│   │
-│   ├── 📁 ddl/                         # Data Definition Language
-│   │   ├── 00_drop_all.sql             #   Drop all tables, sequences, procedures
-│   │   └── 01_create_tables.sql        #   CREATE TABLE, SEQUENCE, INDEX
-│   │
-│   ├── 📁 etl/                         # Extract-Transform-Load
-│   │   └── pr_etl_full_refresh.sql     #   Stored procedure for full refresh ETL
-│   │
-│   ├── 📁 seed/                        # Data population
-│   │   ├── 01_seed_lookup.sql          #   Seed lookup tables (CATEGORY, PRD_TYPE, ...)
-│   │   ├── 02_insert_full.sql          #   Full dataset insert
-│   │   ├── 03_insert_mini.sql          #   Small sample dataset (for testing)
-│   │   └── 📁 procedures/              #   Additional stored procedures
-│   │
-│   ├── 📁 views/                       # Database views
-│   │   └── dashboard_views.sql         #   ORDER_LINE_FLAT, VW_DASH_CAMPAIGN_PRODUCT
-│   │
-│   └── 📁 triggers/                    # Triggers
-│       └── triggers.sql                #   Database trigger scripts
+├─ api/                         # REST API
+│  ├─ server.js
+│  ├─ package.json
+│  └─ .env.example                     
 │
-├── 📁 api/                             # REST API (Node.js)
-│   ├── server.js                       #   Express server + Oracle connection
-│   ├── package.json                    #   npm dependencies
-│   └── .env                            #   Environment variables (not in git)
-│
-├── .gitignore
-└── README.md
+└─ README.md
 ```
