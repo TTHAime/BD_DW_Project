@@ -87,7 +87,7 @@ Bridge: DW_BRIDGE_CAMPAIGN_PRODUCT (CMP_ID ↔ PRD_ID)
 ```
 
 ## Project Structure
- 
+BD_DW_Project
 ```
 e-commerce-data-warehouse/
 │  ├─ ddl/                   # Database structure
