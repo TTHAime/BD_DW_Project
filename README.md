@@ -101,11 +101,13 @@ e-commerce-data-warehouse/
 │  │  └─ insert_sample_data.sql          #  1 order for testing
 │  │
 │  ├─ etl/                      # ETL scripts
-│  │  └─ etl_full_load.sql      # Full refresh ETL procedure
+│  │  └─ etl_load_dw_scd1.sql     # Full refresh ETL procedure SCD Type1
+│  │  └─ etl_load_dw_scd2.sql     # SCD Type2
+│  │ 
+│  ├─ views/                    # Reporting views for PowerBi
+│  │  └─ create_views_scd1.sql       
+│  │  └─ create_views_scd2.sql   
 │  │
-│  ├─ views/                    # Reporting views
-│  │  └─ create_views.sql       # ORDER_LINE_FLAT, VW_DASH_CAMPAIGN_PRODUCT
-│
 ├─ api/                         # REST API
 │  ├─ server.js
 │  ├─ package.json
