@@ -1,91 +1,114 @@
 /* ======================================================================
-   DASHBOARD VIEWS — SCD TYPE 2 VERSION
+   DASHBOARD VIEWS — SCD TYPE 2 VERSION (FIXED)
    Base views + 5 Report-specific views
-   
-   Run after: etl_load_dw_scd2.sql
+
+   Run after: etl_load_dw_scd2_fixed.sql
+
+   Fixes applied vs previous version:
+     1. JOIN กับ DW_DIM_CAMPAIGN ใช้ CMP_START_DATE / CMP_END_DATE
+        (business dates ที่ rename ชัดเจนแล้ว)
+     2. VW_DASH_CAMPAIGN_PRODUCT join Bridge ด้วย surrogate key
+        แทน natural key — ได้ version ที่ถูก pin ไว้ตอน ETL
+     3. Report 2 measure ตรงกับ Bus Matrix:
+        AVG_ORDER_VALUE = SUM(LINE_AMOUNT) / COUNT(DISTINCT ORD_ID)
+     4. Report 3 ROW_NUMBER() เพิ่ม CMP_KEY เป็น tie-break
+        ป้องกัน non-deterministic เมื่อ discount เท่ากัน
+     5. ทุก report view มี ORDER_DATE สำหรับ timeline filtering
    ====================================================================== */
- 
+
 /* ==========================================================
    BASE VIEW: ORDER_LINE_FLAT
-   Fact + all Dims joined via surrogate keys
-   Used as foundation for all 5 report views
+   Fact + all Dims joined ผ่าน surrogate key
+   ทุก column ใช้จาก SCD version ที่ถูก pin ไว้ใน FACT แล้ว
    ========================================================== */
 CREATE OR REPLACE VIEW ORDER_LINE_FLAT AS
 SELECT
+  /* ---------- Date dim ---------- */
   fo.ORDER_DATE_KEY,
   dd.DATE_VALUE,
   dd.DAY_OF_MONTH,
   dd.DAY_NAME,
+  dd.DAY_OF_WEEK_NUM,
   dd.WEEK_OF_YEAR,
   dd.MONTH_NUM,
   dd.MONTH_NAME,
   dd.QUARTER_NUM,
   dd.YEAR_NUM,
   dd.IS_WEEKEND,
- 
+
+  /* ---------- Category ---------- */
   cat.CAT_ID,
-  cat.NAME                                    AS CAT_NAME,
- 
+  cat.NAME                                   AS CAT_NAME,
+
+  /* ---------- Line detail ---------- */
   fol.COMMENT_TEXT,
   pdim.DESCRIPTION,
   fol.LINE_AMOUNT,
-  fol.DISCOUNT                                AS LINE_DISCOUNT,
-  (NVL(fol.QTY,0) * NVL(fol.UNIT_PRICE,0))   AS LIST_PRICE,
- 
+  fol.DISCOUNT                               AS LINE_DISCOUNT,
+  (NVL(fol.QTY,0) * NVL(fol.UNIT_PRICE,0))  AS LIST_PRICE,
+
+  /* ---------- Order ---------- */
   fol.ORD_ID,
   fo.ORDER_DATE,
   fo.PAY_STAT_ID,
-  pay.NAME                                    AS PAY_STAT_NAME,
- 
-  pdim.DISCOUNT                               AS PRD_DISCOUNT,
+  pay.NAME                                   AS PAY_STAT_NAME,
+
+  /* ---------- Product (version ณ order date) ---------- */
+  pdim.DISCOUNT                              AS PRD_DISCOUNT,
   pdim.PRD_ID,
   fol.PRD_KEY,
   pdim.PRD_NAME,
-  pdim.PRICE                                  AS PRD_PRICE,
-  pdim.STOCK                                  AS PRD_STOCK,
+  pdim.PRICE                                 AS PRD_PRICE,
+  pdim.STOCK                                 AS PRD_STOCK,
   pdim.PRD_TYPE_ID,
-  ptype.NAME                                  AS PRD_TYPE_NAME,
- 
-  pdim.EFFECTIVE_DATE                         AS PRD_EFFECTIVE_DATE,
-  pdim.END_DATE                               AS PRD_END_DATE,
-  pdim.IS_CURRENT                             AS PRD_IS_CURRENT,
- 
+  ptype.NAME                                 AS PRD_TYPE_NAME,
+  pdim.EFFECTIVE_DATE                        AS PRD_EFFECTIVE_DATE,
+  pdim.SCD_END_DATE                          AS PRD_SCD_END_DATE,
+  pdim.IS_CURRENT                            AS PRD_IS_CURRENT,
+
+  /* ---------- Line measures ---------- */
   fol.QTY,
   fol.RATING,
- 
-  sdim.RATING_AVG,
   fol.SEQ,
+  fol.UNIT_PRICE,
+
+  /* ---------- Shop (version ณ order date) ---------- */
+  sdim.RATING_AVG,
   sdim.SHOP_ID,
   fol.SHOP_KEY,
   sdim.SHOP_NAME,
- 
-  sdim.EFFECTIVE_DATE                         AS SHOP_EFFECTIVE_DATE,
-  sdim.END_DATE                               AS SHOP_END_DATE,
-  sdim.IS_CURRENT                             AS SHOP_IS_CURRENT,
- 
+  sdim.EFFECTIVE_DATE                        AS SHOP_EFFECTIVE_DATE,
+  sdim.SCD_END_DATE                          AS SHOP_SCD_END_DATE,
+  sdim.IS_CURRENT                            AS SHOP_IS_CURRENT,
+
+  /* ---------- Shipping status ---------- */
   fol.SHP_STAT_ID,
-  shp.NAME                                    AS SHP_STAT_NAME,
- 
+  shp.NAME                                   AS SHP_STAT_NAME,
+
+  /* ---------- Order totals (header) ---------- */
   fo.TOTAL_AMOUNT,
   fo.TOTAL_DISCOUNT,
- 
-  fol.UNIT_PRICE,
+
+  /* ---------- User ---------- */
   fo.USR_ID
- 
+
 FROM DW_FACT_ORDER_LINE fol
-JOIN DW_FACT_ORDER fo       ON fo.ORD_ID      = fol.ORD_ID
-LEFT JOIN DW_DIM_DATE dd    ON dd.DATE_KEY    = fo.ORDER_DATE_KEY
-LEFT JOIN DW_DIM_PRODUCT pdim ON pdim.PRD_KEY = fol.PRD_KEY
-LEFT JOIN DW_DIM_SHOP sdim  ON sdim.SHOP_KEY  = fol.SHOP_KEY
-LEFT JOIN DW_DIM_CATEGORY cat ON cat.CAT_ID   = pdim.CAT_ID
+JOIN DW_FACT_ORDER fo           ON fo.ORD_ID        = fol.ORD_ID
+LEFT JOIN DW_DIM_DATE dd        ON dd.DATE_KEY       = fo.ORDER_DATE_KEY
+LEFT JOIN DW_DIM_PRODUCT pdim   ON pdim.PRD_KEY      = fol.PRD_KEY
+LEFT JOIN DW_DIM_SHOP sdim      ON sdim.SHOP_KEY     = fol.SHOP_KEY
+LEFT JOIN DW_DIM_CATEGORY cat   ON cat.CAT_ID        = pdim.CAT_ID
 LEFT JOIN DW_DIM_PRD_TYPE ptype ON ptype.PRD_TYPE_ID = pdim.PRD_TYPE_ID
-LEFT JOIN DW_DIM_PAY_STAT pay ON pay.PAY_STAT_ID    = fo.PAY_STAT_ID
-LEFT JOIN DW_DIM_SHP_STAT shp ON shp.SHP_STAT_ID    = fol.SHP_STAT_ID;
+LEFT JOIN DW_DIM_PAY_STAT pay   ON pay.PAY_STAT_ID   = fo.PAY_STAT_ID
+LEFT JOIN DW_DIM_SHP_STAT shp   ON shp.SHP_STAT_ID   = fol.SHP_STAT_ID;
 /
- 
+
 /* ==========================================================
    BASE VIEW: VW_DASH_CAMPAIGN_PRODUCT
-   Bridge + Campaign + Product (current versions)
+   Bridge + Campaign + Product (current version เท่านั้น)
+
+   FIX: JOIN Bridge ด้วย surrogate key (CMP_KEY, PRD_KEY)
+   ที่ถูก pin ตอน ETL → ได้ version ที่ตรงกับ source data
    ========================================================== */
 CREATE OR REPLACE VIEW VW_DASH_CAMPAIGN_PRODUCT AS
 SELECT
@@ -93,47 +116,54 @@ SELECT
   c.CMP_ID,
   c.CMP_NAME,
   c.DISCOUNT        AS CMP_DISCOUNT,
-  c.START_DATE       AS CMP_START_DATE,
-  c.END_DATE         AS CMP_END_DATE,
+  c.CMP_START_DATE,                 -- business: วันเริ่มแคมเปญ
+  c.CMP_END_DATE,                   -- business: วันสิ้นสุดแคมเปญ
   c.PERIOD_ID,
- 
+
   p.PRD_KEY,
   p.PRD_ID,
   p.PRD_NAME,
-  p.PRICE            AS PRD_PRICE,
-  p.DISCOUNT         AS PRD_DISCOUNT,
+  p.PRICE           AS PRD_PRICE,
+  p.DISCOUNT        AS PRD_DISCOUNT,
   p.CAT_ID,
   p.PRD_TYPE_ID,
   p.SHOP_ID
- 
+
 FROM DW_BRIDGE_CAMPAIGN_PRODUCT b
-JOIN DW_DIM_CAMPAIGN c ON c.CMP_ID = b.CMP_ID AND c.IS_CURRENT = 'Y'
-JOIN DW_DIM_PRODUCT p  ON p.PRD_ID = b.PRD_ID AND p.IS_CURRENT = 'Y';
+JOIN DW_DIM_CAMPAIGN c ON c.CMP_KEY = b.CMP_KEY   -- surrogate key join
+JOIN DW_DIM_PRODUCT  p ON p.PRD_KEY = b.PRD_KEY;  -- surrogate key join
 /
- 
+
 /* ==========================================================
    CONVENIENCE: Current dimension views
    ========================================================== */
 CREATE OR REPLACE VIEW VW_DIM_PRODUCT_CURRENT AS
 SELECT * FROM DW_DIM_PRODUCT WHERE IS_CURRENT = 'Y';
 /
- 
+
 CREATE OR REPLACE VIEW VW_DIM_SHOP_CURRENT AS
 SELECT * FROM DW_DIM_SHOP WHERE IS_CURRENT = 'Y';
 /
- 
- 
+
+CREATE OR REPLACE VIEW VW_DIM_CAMPAIGN_CURRENT AS
+SELECT * FROM DW_DIM_CAMPAIGN WHERE IS_CURRENT = 'Y';
+/
+
 /* ======================================================================
-   REPORT VIEWS — 1 view ต่อ 1 รายงานเชิงบริหาร
+   REPORT VIEWS (1 per report)
    ====================================================================== */
- 
+
 /* ==========================================================
    REPORT 1: VW_RPT_SALES_TOP5
    ยอดขาย Top 5 สินค้า แยกตามหมวด ร้านค้า ช่วงเวลา
-   
-   Dims: DATE, PRODUCT, CATEGORY, PRD_TYPE, SHOP
-   Measures: SUM(LINE_AMOUNT), SUM(QTY), COUNT(ORD_ID), AVG(RATING)
-   
+
+   Bus Matrix dims: DATE, PRODUCT, CATEGORY, PRD_TYPE, SHOP
+   Bus Matrix measures:
+     SUM(LINE_AMOUNT)  → TOTAL_REVENUE
+     SUM(QTY)          → TOTAL_QTY
+     COUNT(ORD_ID)     → ORDER_COUNT
+     AVG(RATING)       → AVG_RATING
+
    Dashboard: Bar Chart Top 5, Donut by Category, Matrix Product x Month
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_SALES_TOP5 AS
@@ -142,39 +172,51 @@ SELECT
   QUARTER_NUM,
   MONTH_NUM,
   MONTH_NAME,
- 
+  DAY_OF_MONTH,
+  DAY_NAME,
+  IS_WEEKEND,
+
   PRD_ID,
   PRD_KEY,
   PRD_NAME,
   PRD_TYPE_NAME,
   CAT_ID,
   CAT_NAME,
- 
+
   SHOP_KEY,
   SHOP_ID,
   SHOP_NAME,
- 
-  SUM(LINE_AMOUNT)          AS TOTAL_REVENUE,
-  SUM(QTY)                  AS TOTAL_QTY,
-  COUNT(DISTINCT ORD_ID)    AS ORDER_COUNT,
-  ROUND(AVG(RATING), 2)     AS AVG_RATING
- 
+
+  SUM(LINE_AMOUNT)            AS TOTAL_REVENUE,
+  SUM(QTY)                    AS TOTAL_QTY,
+  COUNT(DISTINCT ORD_ID)      AS ORDER_COUNT,
+  ROUND(AVG(RATING), 2)       AS AVG_RATING,
+  COUNT(RATING)               AS RATING_COUNT
+
 FROM ORDER_LINE_FLAT
 GROUP BY
   YEAR_NUM, QUARTER_NUM, MONTH_NUM, MONTH_NAME,
-  PRD_ID, PRD_KEY, PRD_NAME, PRD_TYPE_NAME, CAT_ID, CAT_NAME,
+  DAY_OF_MONTH, DAY_NAME, IS_WEEKEND,
+  PRD_ID, PRD_KEY, PRD_NAME, PRD_TYPE_NAME,
+  CAT_ID, CAT_NAME,
   SHOP_KEY, SHOP_ID, SHOP_NAME;
 /
- 
- 
+
 /* ==========================================================
    REPORT 2: VW_RPT_CUSTOMER_BEHAVIOR
-   พฤติกรรมการซื้อของลูกค้า
-   
-   Dims: DATE, USR_ID, SHOP, CATEGORY, PAY_STAT
-   Measures: COUNT(ORD_ID), SUM(LINE_AMOUNT), AVG(TOTAL_AMOUNT), COUNT(DISTINCT USR_ID)
-   
-   Dashboard: Treemap Category by User, Scatter Freq vs AOV, Donut Payment Status
+   พฤติกรรมการซื้อของลูกค้า แยกตามหมวด สถานะชำระ
+
+   Bus Matrix dims: DATE, USR_ID, SHOP, CATEGORY, PAY_STAT
+   Bus Matrix measures (fixed):
+     COUNT(ORD_ID)                       → ORDER_COUNT
+     SUM(LINE_AMOUNT)                    → TOTAL_REVENUE
+     SUM/COUNT(DISTINCT ORD_ID)          → AVG_ORDER_VALUE  ← fixed
+     (COUNT DISTINCT USR_ID ไม่ใช่ measure aggregate ใน group นี้)
+
+   FIX: AVG(TOTAL_AMOUNT) ผิด เพราะ TOTAL_AMOUNT ซ้ำทุก line ของ order เดียวกัน
+        ใช้ SUM(LINE_AMOUNT) / COUNT(DISTINCT ORD_ID) แทน = ค่าถูกต้อง
+
+   Dashboard: Treemap Category by User, Scatter Freq vs AOV, Donut Payment
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_CUSTOMER_BEHAVIOR AS
 SELECT
@@ -182,96 +224,163 @@ SELECT
   QUARTER_NUM,
   MONTH_NUM,
   MONTH_NAME,
- 
+  DAY_NAME,
+  IS_WEEKEND,
+
   USR_ID,
- 
+
   CAT_ID,
   CAT_NAME,
- 
+
   SHOP_KEY,
   SHOP_ID,
   SHOP_NAME,
- 
+
   PAY_STAT_ID,
   PAY_STAT_NAME,
- 
-  COUNT(DISTINCT ORD_ID)    AS ORDER_COUNT,
-  SUM(LINE_AMOUNT)          AS TOTAL_REVENUE,
-  SUM(QTY)                  AS TOTAL_QTY,
-  ROUND(AVG(TOTAL_AMOUNT), 2) AS AVG_ORDER_VALUE
- 
+
+  COUNT(DISTINCT ORD_ID)                                AS ORDER_COUNT,
+  SUM(LINE_AMOUNT)                                      AS TOTAL_REVENUE,
+  SUM(QTY)                                              AS TOTAL_QTY,
+  ROUND(
+    CASE WHEN COUNT(DISTINCT ORD_ID) > 0
+         THEN SUM(LINE_AMOUNT) / COUNT(DISTINCT ORD_ID)
+         ELSE 0
+    END, 2
+  )                                                     AS AVG_ORDER_VALUE
+
 FROM ORDER_LINE_FLAT
 GROUP BY
   YEAR_NUM, QUARTER_NUM, MONTH_NUM, MONTH_NAME,
+  DAY_NAME, IS_WEEKEND,
   USR_ID,
   CAT_ID, CAT_NAME,
   SHOP_KEY, SHOP_ID, SHOP_NAME,
   PAY_STAT_ID, PAY_STAT_NAME;
 /
- 
- 
+
 /* ==========================================================
    REPORT 3: VW_RPT_CAMPAIGN_EFFECTIVENESS
    ประสิทธิภาพแคมเปญ — เทียบยอดขายสินค้าใน/นอกแคมเปญ
-   
-   Dims: DATE, PRODUCT, CATEGORY, SHOP, CAMPAIGN
-   Measures: SUM(LINE_AMOUNT), SUM(QTY), COUNT(ORD_ID), AVG(CMP_DISCOUNT)
-   
-   Dashboard: Grouped Bar (in vs out campaign), Gantt Timeline,
-              Matrix Campaign x Product, Bar Avg Discount
+
+   Bus Matrix dims: DATE, PRODUCT, CATEGORY, SHOP, CAMPAIGN
+   Bus Matrix measures:
+     SUM(LINE_AMOUNT)  → TOTAL_REVENUE
+     SUM(QTY)          → TOTAL_QTY
+     COUNT(ORD_ID)     → ORDER_COUNT
+     AVG(CMP_DISCOUNT) → AVG_CAMPAIGN_DISCOUNT
+
+   Logic:
+   - LEFT JOIN campaign ผ่าน VW_DASH_CAMPAIGN_PRODUCT
+     โดย match PRD_ID + ORDER_DATE อยู่ใน [CMP_START_DATE, CMP_END_DATE]
+   - ถ้า product อยู่ใน >1 campaign วันเดียวกัน → เลือก campaign discount สูงสุด
+     (ROW_NUMBER ORDER BY CMP_DISCOUNT DESC, CMP_KEY ASC เพื่อ deterministic)
+   - CAMPAIGN_FLAG: 'In Campaign' / 'Not in Campaign'
+
+   FIX: CMP_START_DATE / CMP_END_DATE ชื่อตรงกับ DW_DIM_CAMPAIGN แล้ว
+   FIX: tie-break เพิ่ม CMP_KEY ASC เพื่อ deterministic
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_CAMPAIGN_EFFECTIVENESS AS
 SELECT
-  olf.YEAR_NUM,
-  olf.QUARTER_NUM,
-  olf.MONTH_NUM,
-  olf.MONTH_NAME,
-  olf.ORDER_DATE,
- 
-  olf.PRD_ID,
-  olf.PRD_KEY,
-  olf.PRD_NAME,
-  olf.CAT_ID,
-  olf.CAT_NAME,
- 
-  olf.SHOP_KEY,
-  olf.SHOP_ID,
-  olf.SHOP_NAME,
- 
-  cp.CMP_ID,
-  cp.CMP_NAME,
-  cp.CMP_DISCOUNT,
-  cp.CMP_START_DATE,
-  cp.CMP_END_DATE,
- 
-  CASE
-    WHEN cp.CMP_ID IS NOT NULL
-         AND olf.ORDER_DATE BETWEEN cp.CMP_START_DATE AND cp.CMP_END_DATE
-    THEN 'In Campaign'
-    ELSE 'Not in Campaign'
-  END AS CAMPAIGN_FLAG,
- 
-  olf.ORD_ID,
-  olf.SEQ,
-  olf.QTY,
-  olf.UNIT_PRICE,
-  olf.LINE_DISCOUNT,
-  olf.LINE_AMOUNT,
-  olf.RATING
- 
-FROM ORDER_LINE_FLAT olf
-LEFT JOIN VW_DASH_CAMPAIGN_PRODUCT cp
-  ON cp.PRD_ID = olf.PRD_ID;
+  sub.YEAR_NUM,
+  sub.QUARTER_NUM,
+  sub.MONTH_NUM,
+  sub.MONTH_NAME,
+  sub.DAY_NAME,
+  sub.IS_WEEKEND,
+  sub.ORDER_DATE,
+
+  sub.PRD_ID,
+  sub.PRD_KEY,
+  sub.PRD_NAME,
+  sub.CAT_ID,
+  sub.CAT_NAME,
+
+  sub.SHOP_KEY,
+  sub.SHOP_ID,
+  sub.SHOP_NAME,
+
+  sub.CMP_KEY,
+  sub.CMP_ID,
+  sub.CMP_NAME,
+  sub.CMP_DISCOUNT,
+  sub.CMP_START_DATE,
+  sub.CMP_END_DATE,
+  sub.CAMPAIGN_FLAG,
+
+  sub.ORD_ID,
+  sub.SEQ,
+  sub.QTY,
+  sub.UNIT_PRICE,
+  sub.LINE_DISCOUNT,
+  sub.LINE_AMOUNT,
+  sub.RATING
+
+FROM (
+  SELECT
+    olf.YEAR_NUM,
+    olf.QUARTER_NUM,
+    olf.MONTH_NUM,
+    olf.MONTH_NAME,
+    olf.DAY_NAME,
+    olf.IS_WEEKEND,
+    olf.ORDER_DATE,
+
+    olf.PRD_ID,
+    olf.PRD_KEY,
+    olf.PRD_NAME,
+    olf.CAT_ID,
+    olf.CAT_NAME,
+
+    olf.SHOP_KEY,
+    olf.SHOP_ID,
+    olf.SHOP_NAME,
+
+    cp.CMP_KEY,
+    cp.CMP_ID,
+    cp.CMP_NAME,
+    cp.CMP_DISCOUNT,
+    cp.CMP_START_DATE,
+    cp.CMP_END_DATE,
+
+    CASE
+      WHEN cp.CMP_ID IS NOT NULL THEN 'In Campaign'
+      ELSE 'Not in Campaign'
+    END                           AS CAMPAIGN_FLAG,
+
+    olf.ORD_ID,
+    olf.SEQ,
+    olf.QTY,
+    olf.UNIT_PRICE,
+    olf.LINE_DISCOUNT,
+    olf.LINE_AMOUNT,
+    olf.RATING,
+
+    -- FIX: เพิ่ม CMP_KEY เป็น tie-break เพื่อ deterministic
+    ROW_NUMBER() OVER (
+      PARTITION BY olf.ORD_ID, olf.SEQ
+      ORDER BY cp.CMP_DISCOUNT DESC NULLS LAST, cp.CMP_KEY ASC NULLS LAST
+    ) AS RN
+
+  FROM ORDER_LINE_FLAT olf
+  LEFT JOIN VW_DASH_CAMPAIGN_PRODUCT cp
+    ON  cp.PRD_ID = olf.PRD_ID
+    AND olf.ORDER_DATE BETWEEN cp.CMP_START_DATE AND cp.CMP_END_DATE
+) sub
+WHERE sub.RN = 1;
 /
- 
- 
+
 /* ==========================================================
    REPORT 4: VW_RPT_SHOP_PERFORMANCE
    ประสิทธิภาพร้านค้า — ออร์เดอร์ แยกตามร้าน สถานะจัดส่ง
-   
-   Dims: DATE, SHOP, SHP_STAT
-   Measures: COUNT(ORD_ID), SUM(QTY), SUM(LINE_AMOUNT), AVG(RATING_AVG)
-   
+
+   Bus Matrix dims: DATE, SHOP, SHP_STAT
+   Bus Matrix measures:
+     COUNT(ORD_ID)    → ORDER_COUNT
+     SUM(QTY)         → TOTAL_QTY
+     SUM(LINE_AMOUNT) → TOTAL_REVENUE
+     AVG(RATING_AVG)  → SHOP_RATING_AVG (ค่า shop rating ณ version นั้น)
+
    Dashboard: Stacked Bar Orders/Shop/Month, Shop Rating Bar,
               Heatmap Pending Orders (Shop x Month)
    ========================================================== */
@@ -282,37 +391,46 @@ SELECT
   MONTH_NUM,
   MONTH_NAME,
   WEEK_OF_YEAR,
- 
+  DAY_OF_MONTH,
+  DAY_NAME,
+  IS_WEEKEND,
+
   SHOP_KEY,
   SHOP_ID,
   SHOP_NAME,
-  RATING_AVG                AS SHOP_RATING_AVG,
- 
+  RATING_AVG                   AS SHOP_RATING_AVG,
+
   SHP_STAT_ID,
   SHP_STAT_NAME,
- 
-  COUNT(DISTINCT ORD_ID)    AS ORDER_COUNT,
-  SUM(QTY)                  AS TOTAL_QTY,
-  SUM(LINE_AMOUNT)          AS TOTAL_REVENUE,
-  ROUND(AVG(RATING), 2)     AS AVG_LINE_RATING
- 
+
+  COUNT(DISTINCT ORD_ID)       AS ORDER_COUNT,
+  SUM(QTY)                     AS TOTAL_QTY,
+  SUM(LINE_AMOUNT)             AS TOTAL_REVENUE,
+  ROUND(AVG(RATING), 2)        AS AVG_LINE_RATING,
+  COUNT(RATING)                AS RATING_COUNT
+
 FROM ORDER_LINE_FLAT
 GROUP BY
-  YEAR_NUM, QUARTER_NUM, MONTH_NUM, MONTH_NAME, WEEK_OF_YEAR,
+  YEAR_NUM, QUARTER_NUM, MONTH_NUM, MONTH_NAME,
+  WEEK_OF_YEAR, DAY_OF_MONTH, DAY_NAME, IS_WEEKEND,
   SHOP_KEY, SHOP_ID, SHOP_NAME, RATING_AVG,
   SHP_STAT_ID, SHP_STAT_NAME;
 /
- 
- 
+
 /* ==========================================================
    REPORT 5: VW_RPT_SATISFACTION
    ความพึงพอใจ — RATING + COMMENT แยกตามร้าน สินค้า สถานะ
-   
-   Dims: DATE, PRODUCT, SHOP, PAY_STAT, SHP_STAT
-   Measures: AVG(RATING), COUNT(RATING), COUNT(COMMENT), Distribution 1-5
-   
-   Dashboard: Bar Avg Rating by Shop, Histogram 1-5,
-              Rating by Shipping Status, Comment Table
+
+   Bus Matrix dims: DATE, PRODUCT, SHOP, PAY_STAT, SHP_STAT
+   Bus Matrix measures:
+     AVG(RATING)        → AVG_RATING (aggregate ระดับ app)
+     COUNT(RATING)      → RATING_COUNT
+     COUNT(COMMENT)     → COMMENT_COUNT (= HAS_COMMENT aggregate)
+     Distribution 1-5   → RATING_GROUP / ดู RATING column โดยตรง
+
+   NOTE: view นี้ expose row-level detail (ORD_ID, SEQ, RATING, COMMENT_TEXT)
+         ไม่ได้ aggregate — ให้ reporting layer ทำ AVG / COUNT เอง
+         เพื่อความยืดหยุ่น (filter ก่อน aggregate)
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_SATISFACTION AS
 SELECT
@@ -320,36 +438,40 @@ SELECT
   QUARTER_NUM,
   MONTH_NUM,
   MONTH_NAME,
- 
+  DAY_NAME,
+  IS_WEEKEND,
+  ORDER_DATE,
+
   PRD_ID,
   PRD_KEY,
   PRD_NAME,
   CAT_NAME,
- 
+
   SHOP_KEY,
   SHOP_ID,
   SHOP_NAME,
-  RATING_AVG                AS SHOP_RATING_AVG,
- 
+  RATING_AVG                    AS SHOP_RATING_AVG,
+
   PAY_STAT_ID,
   PAY_STAT_NAME,
   SHP_STAT_ID,
   SHP_STAT_NAME,
- 
+
+  USR_ID,
   ORD_ID,
   SEQ,
   RATING,
   COMMENT_TEXT,
- 
-  CASE WHEN RATING IS NOT NULL THEN 1 ELSE 0 END AS HAS_RATING,
+
+  CASE WHEN RATING IS NOT NULL     THEN 1 ELSE 0 END  AS HAS_RATING,
   CASE WHEN COMMENT_TEXT IS NOT NULL THEN 1 ELSE 0 END AS HAS_COMMENT,
- 
+
   CASE
     WHEN RATING >= 4 THEN 'Good'
-    WHEN RATING = 3  THEN 'Mid'
+    WHEN RATING  = 3 THEN 'Mid'
     WHEN RATING <= 2 THEN 'Low'
     ELSE 'No Rating'
-  END AS RATING_GROUP
- 
+  END                           AS RATING_GROUP
+
 FROM ORDER_LINE_FLAT;
 /
