@@ -9,6 +9,7 @@ BEGIN
      WHERE ORD_ID = :NEW.ORD_ID;
   END IF;
 END;
+/
 
 CREATE OR REPLACE TRIGGER TRG_CMP_PRD_SEQ
 BEFORE INSERT ON CMP_PRD
@@ -21,6 +22,7 @@ BEGIN
      WHERE CMP_ID = :NEW.CMP_ID;
   END IF;
 END;
+/
 
 SELECT line, position, text
 FROM user_errors
