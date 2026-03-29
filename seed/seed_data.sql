@@ -223,8 +223,8 @@ BEGIN
   (PRD_ID, NAME, DESCRIPTION, PRICE, STOCK, DISCOUNT, CAT_ID, PRD_TYPE_ID, SHOP_ID)
 VALUES
   (i,
-   v_type_name,                           -- ✅ ชื่อสินค้า ไม่ต้องมี #num
-   'ข้อมูลสินค้า: ' || v_type_name,       -- ✅ description เป็นข้อมูลสินค้า
+   v_type_name,                           
+   'ข้อมูลสินค้า: ' || v_type_name,       
    TRUNC(DBMS_RANDOM.VALUE(20,200)) + 0.99,
    TRUNC(DBMS_RANDOM.VALUE(10,500)),
    TRUNC(DBMS_RANDOM.VALUE(0,20)),
