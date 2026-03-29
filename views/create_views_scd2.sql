@@ -1,19 +1,9 @@
 /* ======================================================================
-   DASHBOARD VIEWS — SCD TYPE 2 VERSION (FIXED)
+   DASHBOARD VIEWS — SCD TYPE 2 VERSION
    Base views + 5 Report-specific views
 
    Run after: etl_load_dw_scd2_fixed.sql
 
-   Fixes applied vs previous version:
-     1. JOIN กับ DW_DIM_CAMPAIGN ใช้ CMP_START_DATE / CMP_END_DATE
-        (business dates ที่ rename ชัดเจนแล้ว)
-     2. VW_DASH_CAMPAIGN_PRODUCT join Bridge ด้วย surrogate key
-        แทน natural key — ได้ version ที่ถูก pin ไว้ตอน ETL
-     3. Report 2 measure ตรงกับ Bus Matrix:
-        AVG_ORDER_VALUE = SUM(LINE_AMOUNT) / COUNT(DISTINCT ORD_ID)
-     4. Report 3 ROW_NUMBER() เพิ่ม CMP_KEY เป็น tie-break
-        ป้องกัน non-deterministic เมื่อ discount เท่ากัน
-     5. ทุก report view มี ORDER_DATE สำหรับ timeline filtering
    ====================================================================== */
 
 /* ==========================================================
@@ -205,18 +195,6 @@ GROUP BY
 /* ==========================================================
    REPORT 2: VW_RPT_CUSTOMER_BEHAVIOR
    พฤติกรรมการซื้อของลูกค้า แยกตามหมวด สถานะชำระ
-
-   Bus Matrix dims: DATE, USR_ID, SHOP, CATEGORY, PAY_STAT
-   Bus Matrix measures (fixed):
-     COUNT(ORD_ID)                       → ORDER_COUNT
-     SUM(LINE_AMOUNT)                    → TOTAL_REVENUE
-     SUM/COUNT(DISTINCT ORD_ID)          → AVG_ORDER_VALUE  ← fixed
-     (COUNT DISTINCT USR_ID ไม่ใช่ measure aggregate ใน group นี้)
-
-   FIX: AVG(TOTAL_AMOUNT) ผิด เพราะ TOTAL_AMOUNT ซ้ำทุก line ของ order เดียวกัน
-        ใช้ SUM(LINE_AMOUNT) / COUNT(DISTINCT ORD_ID) แทน = ค่าถูกต้อง
-
-   Dashboard: Treemap Category by User, Scatter Freq vs AOV, Donut Payment
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_CUSTOMER_BEHAVIOR AS
 SELECT
@@ -262,23 +240,6 @@ GROUP BY
 /* ==========================================================
    REPORT 3: VW_RPT_CAMPAIGN_EFFECTIVENESS
    ประสิทธิภาพแคมเปญ — เทียบยอดขายสินค้าใน/นอกแคมเปญ
-
-   Bus Matrix dims: DATE, PRODUCT, CATEGORY, SHOP, CAMPAIGN
-   Bus Matrix measures:
-     SUM(LINE_AMOUNT)  → TOTAL_REVENUE
-     SUM(QTY)          → TOTAL_QTY
-     COUNT(ORD_ID)     → ORDER_COUNT
-     AVG(CMP_DISCOUNT) → AVG_CAMPAIGN_DISCOUNT
-
-   Logic:
-   - LEFT JOIN campaign ผ่าน VW_DASH_CAMPAIGN_PRODUCT
-     โดย match PRD_ID + ORDER_DATE อยู่ใน [CMP_START_DATE, CMP_END_DATE]
-   - ถ้า product อยู่ใน >1 campaign วันเดียวกัน → เลือก campaign discount สูงสุด
-     (ROW_NUMBER ORDER BY CMP_DISCOUNT DESC, CMP_KEY ASC เพื่อ deterministic)
-   - CAMPAIGN_FLAG: 'In Campaign' / 'Not in Campaign'
-
-   FIX: CMP_START_DATE / CMP_END_DATE ชื่อตรงกับ DW_DIM_CAMPAIGN แล้ว
-   FIX: tie-break เพิ่ม CMP_KEY ASC เพื่อ deterministic
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_CAMPAIGN_EFFECTIVENESS AS
 SELECT
@@ -373,16 +334,6 @@ WHERE sub.RN = 1;
 /* ==========================================================
    REPORT 4: VW_RPT_SHOP_PERFORMANCE
    ประสิทธิภาพร้านค้า — ออร์เดอร์ แยกตามร้าน สถานะจัดส่ง
-
-   Bus Matrix dims: DATE, SHOP, SHP_STAT
-   Bus Matrix measures:
-     COUNT(ORD_ID)    → ORDER_COUNT
-     SUM(QTY)         → TOTAL_QTY
-     SUM(LINE_AMOUNT) → TOTAL_REVENUE
-     AVG(RATING_AVG)  → SHOP_RATING_AVG (ค่า shop rating ณ version นั้น)
-
-   Dashboard: Stacked Bar Orders/Shop/Month, Shop Rating Bar,
-              Heatmap Pending Orders (Shop x Month)
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_SHOP_PERFORMANCE AS
 SELECT
@@ -421,16 +372,6 @@ GROUP BY
    REPORT 5: VW_RPT_SATISFACTION
    ความพึงพอใจ — RATING + COMMENT แยกตามร้าน สินค้า สถานะ
 
-   Bus Matrix dims: DATE, PRODUCT, SHOP, PAY_STAT, SHP_STAT
-   Bus Matrix measures:
-     AVG(RATING)        → AVG_RATING (aggregate ระดับ app)
-     COUNT(RATING)      → RATING_COUNT
-     COUNT(COMMENT)     → COMMENT_COUNT (= HAS_COMMENT aggregate)
-     Distribution 1-5   → RATING_GROUP / ดู RATING column โดยตรง
-
-   NOTE: view นี้ expose row-level detail (ORD_ID, SEQ, RATING, COMMENT_TEXT)
-         ไม่ได้ aggregate — ให้ reporting layer ทำ AVG / COUNT เอง
-         เพื่อความยืดหยุ่น (filter ก่อน aggregate)
    ========================================================== */
 CREATE OR REPLACE VIEW VW_RPT_SATISFACTION AS
 SELECT
