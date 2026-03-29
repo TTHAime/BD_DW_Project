@@ -97,8 +97,6 @@ LEFT JOIN DW_DIM_SHP_STAT shp   ON shp.SHP_STAT_ID   = fol.SHP_STAT_ID;
    BASE VIEW: VW_DASH_CAMPAIGN_PRODUCT
    Bridge + Campaign + Product (current version เท่านั้น)
 
-   FIX: JOIN Bridge ด้วย surrogate key (CMP_KEY, PRD_KEY)
-   ที่ถูก pin ตอน ETL → ได้ version ที่ตรงกับ source data
    ========================================================== */
 CREATE OR REPLACE VIEW VW_DASH_CAMPAIGN_PRODUCT AS
 SELECT
@@ -317,7 +315,7 @@ FROM (
     olf.LINE_AMOUNT,
     olf.RATING,
 
-    -- FIX: เพิ่ม CMP_KEY เป็น tie-break เพื่อ deterministic
+
     ROW_NUMBER() OVER (
       PARTITION BY olf.ORD_ID, olf.SEQ
       ORDER BY cp.CMP_DISCOUNT DESC NULLS LAST, cp.CMP_KEY ASC NULLS LAST
